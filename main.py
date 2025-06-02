@@ -26,10 +26,23 @@ class BacktestRunner:
         self.analyzer = ResultAnalyzer()
         self.data_loaded = False
 
-    def setup_engine(self, symbol: str, exchange: Exchange, start_date: datetime, end_date: datetime):
+    def _convert_to_vt_symbol(self, symbol: str) -> str:
+        # 如果已经包含交易所后缀
+        if '.' in symbol:
+            code, exchange_suffix = symbol.split('.')
+            if exchange_suffix.upper() in ['SH', 'SSE']:
+                return f"{code}.SSE"
+            elif exchange_suffix.upper() in ['SZ', 'SZSE']:
+                return f"{code}.SZSE"
+
+        raise ValueError(f"不支持的代码: {symbol}")
+
+    def setup_engine(self, symbol: str, start_date: datetime, end_date: datetime):
         """设置回测引擎"""
+        # 自动转换股票代码为vt_symbol格式
+        vt_symbol = self._convert_to_vt_symbol(symbol)
         self.engine.set_parameters(
-            vt_symbol=f"{symbol}.{exchange.value}",
+            vt_symbol=vt_symbol,
             interval=Interval.DAILY,
             start=start_date,
             end=end_date,
@@ -47,21 +60,21 @@ class BacktestRunner:
     def load_data(self, symbol: str, start_date: str, end_date: str):
         """将数据保存到vnpy数据库，然后从数据库加载"""
         from vnpy.trader.database import get_database
-        
+
         # 1. 从tushare获取数据
         data = self.data_loader.get_index_data(symbol, start_date, end_date)
         if data is None or len(data) == 0:
             print("无法获取数据")
             return False
-        
+
         # 2. 获取vnpy数据库实例
         database = get_database()
-        
+
         # 3. 将数据保存到vnpy数据库
         print(f"开始将 {len(data)} 条数据保存到vnpy数据库...")
         database.save_bar_data(data)
         print("数据保存完成")
-        
+
         # 4. 使用引擎的load_data方法从数据库加载
         self.engine.load_data()
         print(f"成功从数据库加载历史数据")
@@ -91,7 +104,7 @@ class BacktestRunner:
         print(f"\n🔍 调试信息:")
         print(f"交易记录数量: {len(trades)}")
         print(f"每日结果数量: {len(daily_results)}")
-        
+
         if trades:
             print(f"交易记录示例属性: {[attr for attr in dir(trades[0]) if not attr.startswith('_')]}")
             print(f"第一笔交易详情:")
@@ -99,7 +112,7 @@ class BacktestRunner:
             for attr in ['datetime', 'time', 'symbol', 'direction', 'offset', 'price', 'volume', 'pnl', 'commission']:
                 if hasattr(trade, attr):
                     print(f"  {attr}: {getattr(trade, attr)}")
-        
+
         if daily_results:
             print(f"每日结果示例属性: {[attr for attr in dir(daily_results[0]) if not attr.startswith('_')]}")
             print(f"第一天结果详情:")
@@ -124,7 +137,7 @@ def main():
         # "399006": "创业板指",
         # "000001": "上证指数",
         # "399001": "深证成指"
-        "688981": "中芯国际"
+        "688981.SH": "中芯国际"
     }
 
     start_date = datetime(2020, 1, 1)
@@ -145,13 +158,8 @@ def main():
 
         runner = BacktestRunner()
 
-        # 设置回测引擎
-        # 根据symbol判断交易所
-        if symbol in ["000016", "000300", "000001", "688981"]:  # 上交所：上证50、沪深300、上证指数、中芯国际(科创板)
-            exchange = Exchange.SSE
-        else:  # 深交所：创业板指、深证成指
-            exchange = Exchange.SZSE
-        runner.setup_engine(symbol, exchange, start_date, end_date)
+        # 设置回测引擎 (现在会自动转换股票代码格式)
+        runner.setup_engine(symbol, start_date, end_date)
 
         # 添加策略
         runner.add_strategy(TrendFollowingStrategy, strategy_setting)

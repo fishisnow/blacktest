@@ -1,0 +1,8 @@
+US.AAPL,苹果
+US.MSFT,微软
+US.GOOGL,谷歌
+US.TSLA,特斯拉
+US.NVDA,英伟达
+US.AMZN,亚马逊
+US.META,Meta
+US.NFLX,奈飞 

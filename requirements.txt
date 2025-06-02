@@ -8,3 +8,4 @@ plotly==6.0.0
 tushare==1.2.89
 TA-Lib==0.6.3
 python-dotenv==1.0.0
+futu-api==9.1.5108
