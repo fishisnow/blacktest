@@ -10,3 +10,4 @@ TA-Lib==0.6.3
 python-dotenv==1.0.0
 futu-api==9.1.5108
 streamlit==1.45.1
+pandas-market-calendars

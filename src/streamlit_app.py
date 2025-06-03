@@ -38,6 +38,41 @@ if 'current_symbol' not in st.session_state:
 if 'backtest_results' not in st.session_state:
     st.session_state.backtest_results = None
 
+# 在文件开头添加字段转换函数
+def convert_trade_fields(trade_dict):
+    """转换交易记录字段为通俗易懂的中文术语"""
+    # 方向转换
+    direction_map = {
+        'Direction.LONG': '做多',
+        'Direction.SHORT': '做空',
+    }
+    
+    # 开平转换
+    offset_map = {
+        'Offset.OPEN': '开仓',
+        'Offset.CLOSE': '平仓',
+    }
+    
+    # 转换方向
+    direction = trade_dict.get('direction', '')
+    if direction in direction_map:
+        direction = direction_map[direction]
+    elif 'LONG' in str(direction).upper():
+        direction = '做多'
+    elif 'SHORT' in str(direction).upper():
+        direction = '做空'
+    
+    # 转换开平
+    offset = trade_dict.get('offset', '')
+    if offset in offset_map:
+        offset = offset_map[offset]
+    elif 'OPEN' in str(offset).upper():
+        offset = '开仓'
+    elif 'CLOSE' in str(offset).upper():
+        offset = '平仓'
+    
+    return direction, offset
+
 class BacktestExecutor:
     """回测执行器"""
     
@@ -691,46 +726,100 @@ def show_backtest_interface():
             st.subheader("📊 回测结果")
             
             results = st.session_state.backtest_results
-            stats = results['stats']
             
-            # 关键指标
+            # 关键指标 - 从daily_results计算得出，而不是从stats获取
             metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
             
+            # 计算策略综合指标
+            strategy_metrics = {}
+            if results['daily_results'] and len(results['daily_results']) > 0:
+                daily_data = results['daily_results']
+                
+                # 基础数据
+                final_return_ratio = daily_data[-1].get('return_ratio', 0)
+                total_pnl = daily_data[-1].get('total_pnl', 0)
+                final_win_loss_ratio = daily_data[-1].get('win_loss_ratio', 0)
+                
+                # 计算最大回撤
+                cumulative_assets = [INITIAL_CAPITAL + d.get('total_pnl', 0) for d in daily_data]
+                cumulative_max = []
+                current_max = cumulative_assets[0]
+                for asset in cumulative_assets:
+                    if asset > current_max:
+                        current_max = asset
+                    cumulative_max.append(current_max)
+                
+                drawdowns = [(asset - max_val) / max_val for asset, max_val in zip(cumulative_assets, cumulative_max)]
+                max_drawdown = min(drawdowns) * 100 if drawdowns else 0
+                
+                # 计算日收益率统计
+                daily_returns = []
+                for i in range(1, len(daily_data)):
+                    prev_pnl = daily_data[i-1].get('total_pnl', 0)
+                    curr_pnl = daily_data[i].get('total_pnl', 0)
+                    daily_return = (curr_pnl - prev_pnl) / INITIAL_CAPITAL
+                    daily_returns.append(daily_return)
+                
+                # 计算年化指标（假设252个交易日）
+                if daily_returns:
+                    avg_daily_return = sum(daily_returns) / len(daily_returns)
+                    std_daily_return = (sum([(r - avg_daily_return) ** 2 for r in daily_returns]) / len(daily_returns)) ** 0.5
+                    
+                    annual_return = avg_daily_return * 252 * 100
+                    annual_volatility = std_daily_return * (252 ** 0.5) * 100
+                    sharpe_ratio = (avg_daily_return * 252) / (std_daily_return * (252 ** 0.5)) if std_daily_return > 0 else 0
+                else:
+                    annual_return = 0
+                    annual_volatility = 0
+                    sharpe_ratio = 0
+                
+                # 计算交易统计
+                total_trades = len(results['trades']) if results['trades'] else 0
+                winning_trades = len([t for t in results['trades'] if t.get('pnl', 0) > 0]) if results['trades'] else 0
+                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                
+                strategy_metrics = {
+                    'final_return_ratio': final_return_ratio,
+                    'total_pnl': total_pnl,
+                    'max_drawdown': max_drawdown,
+                    'final_win_loss_ratio': final_win_loss_ratio,
+                    'total_trades': total_trades,
+                    'win_rate': win_rate,
+                    'annual_return': annual_return,
+                    'annual_volatility': annual_volatility,
+                    'sharpe_ratio': sharpe_ratio
+                }
+            else:
+                # 如果没有daily_results数据，使用默认值
+                strategy_metrics = {
+                    'final_return_ratio': 0,
+                    'total_pnl': 0,
+                    'max_drawdown': 0,
+                    'final_win_loss_ratio': 0,
+                    'total_trades': 0,
+                    'win_rate': 0,
+                    'annual_return': 0,
+                    'annual_volatility': 0,
+                    'sharpe_ratio': 0
+                }
+            
             with metric_col1:
-                total_return = stats.get('总收益率', 0) * 100 if '总收益率' in stats else 0
-                st.metric("总收益率", f"{total_return:.2f}%")
+                st.metric("策略收益率", f"{strategy_metrics['final_return_ratio']:.2f}%")
             
             with metric_col2:
-                # 计算当前收益率（相对初始资金）
-                if results['daily_results']:
-                    current_return_ratio = results['daily_results'][-1].get('return_ratio', 0) if results['daily_results'] else 0
-                else:
-                    current_return_ratio = 0
-                st.metric("当前收益率", f"{current_return_ratio:.2f}%")
+                st.metric("年化收益率", f"{strategy_metrics['annual_return']:.2f}%")
             
             with metric_col3:
-                # 计算总盈亏
-                if results['daily_results']:
-                    total_pnl = results['daily_results'][-1].get('total_pnl', 0) if results['daily_results'] else 0
-                else:
-                    total_pnl = 0
-                st.metric("总盈亏", f"{total_pnl:,.0f}")
+                st.metric("总盈亏", f"{strategy_metrics['total_pnl']:,.0f}")
             
             with metric_col4:
-                max_drawdown = stats.get('最大回撤', 0) * 100 if '最大回撤' in stats else 0
-                st.metric("最大回撤", f"{max_drawdown:.2f}%")
+                st.metric("最大回撤", f"{strategy_metrics['max_drawdown']:.2f}%")
             
             with metric_col5:
-                # 计算最终盈利天数/亏损天数比
-                if results['daily_results']:
-                    final_win_loss_ratio = results['daily_results'][-1].get('win_loss_ratio', 0) if results['daily_results'] else 0
-                else:
-                    final_win_loss_ratio = 0
-                st.metric("盈利天数/亏损天数", f"{final_win_loss_ratio:.2f}")
+                st.metric("夏普比率", f"{strategy_metrics['sharpe_ratio']:.2f}")
             
             with metric_col6:
-                total_trades = len(results['trades']) if results['trades'] else 0
-                st.metric("总交易次数", total_trades)
+                st.metric("胜率", f"{strategy_metrics['win_rate']:.1f}%")
             
             # 性能图表
             st.subheader("📈 性能图表")
@@ -751,13 +840,6 @@ def show_backtest_interface():
                     # 创建K线图
                     kline_fig = create_stock_kline_chart(results['symbol'], start_date, end_date)
                     st.plotly_chart(kline_fig, use_container_width=True)
-                    
-                    # 添加分析提示
-                    st.info("💡 **分析提示**: 对比上方策略收益曲线与此K线图，可以观察：\n"
-                           "- 策略在股票上涨/下跌期间的表现\n"
-                           "- 策略是否能在震荡市中获利\n"
-                           "- 回撤期是否对应股票的下跌趋势")
-                    
                 except Exception as e:
                     st.error(f"K线图生成失败: {str(e)}")
                     st.write("无法显示标的走势图，可能的原因：")
@@ -770,54 +852,43 @@ def show_backtest_interface():
             # 详细统计
             st.subheader("📋 策略指标详情")
             
-            # 只显示重要的策略指标
+            # 显示真正的策略综合指标
             try:
-                # 筛选出有用的指标
+                # 构建策略指标展示数据
                 important_metrics = {
-                    '总收益率': '策略的总体收益表现',
-                    '最大回撤': '策略面临的最大风险',
-                    '夏普比率': '风险调整后的收益指标',
-                    '胜率': '盈利交易占比',
-                    '盈亏比': '平均盈利与平均亏损的比率',
-                    '年化收益率': '按年化计算的收益率',
-                    '年化波动率': '收益的年化标准差',
-                    '最大连续亏损天数': '最长的连续亏损期',
-                    '平均持仓天数': '每笔交易的平均持有时间'
+                    '策略收益率': (strategy_metrics['final_return_ratio'], '策略期间的总体收益表现'),
+                    '年化收益率': (strategy_metrics['annual_return'], '将策略收益换算为年化表现'),
+                    '年化波动率': (strategy_metrics['annual_volatility'], '策略收益的年化标准差'),
+                    '夏普比率': (strategy_metrics['sharpe_ratio'], '风险调整后的收益指标，越高越好'),
+                    '最大回撤': (strategy_metrics['max_drawdown'], '从最高点到最低点的最大损失'),
+                    '交易胜率': (strategy_metrics['win_rate'], '盈利交易占总交易数量的比例'),
+                    '总交易次数': (strategy_metrics['total_trades'], '策略期间的总交易笔数'),
+                    '盈利天数比': (strategy_metrics['final_win_loss_ratio'], '盈利天数与亏损天数的比值')
                 }
                 
                 display_data = []
-                for key, description in important_metrics.items():
-                    if key in stats:
-                        value = stats[key]
-                        try:
-                            if pd.isna(value) or value is None:
-                                value_str = "N/A"
-                            elif isinstance(value, (int, float)):
-                                if np.isinf(value):
-                                    value_str = "∞" if value > 0 else "-∞"
-                                elif np.isnan(value):
-                                    value_str = "NaN"
+                for key, (value, description) in important_metrics.items():
+                    try:
+                        if isinstance(value, (int, float)):
+                            if '率' in key or '比' in key:
+                                if '胜率' in key or '收益率' in key:
+                                    value_str = f"{value:.2f}%"
                                 else:
-                                    # 根据指标类型格式化
-                                    if '率' in key or '比' in key:
-                                        if key == '胜率':
-                                            value_str = f"{value * 100:.2f}%" if value <= 1 else f"{value:.2f}%"
-                                        elif '收益率' in key:
-                                            value_str = f"{value * 100:.2f}%" if abs(value) <= 10 else f"{value:.2f}%"
-                                        else:
-                                            value_str = f"{value:.4f}"
-                                    else:
-                                        value_str = f"{value:.2f}"
+                                    value_str = f"{value:.2f}"
+                            elif '次数' in key:
+                                value_str = f"{int(value)}"
                             else:
-                                value_str = str(value)[:50]
-                        except:
-                            value_str = "无法解析"
-                        
-                        display_data.append({
-                            "指标": key,
-                            "数值": value_str,
-                            "说明": description
-                        })
+                                value_str = f"{value:.2f}%"
+                        else:
+                            value_str = str(value)
+                    except:
+                        value_str = "无法解析"
+                    
+                    display_data.append({
+                        "指标": key,
+                        "数值": value_str,
+                        "说明": description
+                    })
                 
                 if display_data:
                     display_df = pd.DataFrame(display_data)
@@ -825,59 +896,103 @@ def show_backtest_interface():
                 else:
                     st.info("没有可显示的策略指标")
                     
-                # 添加指标解释
-                with st.expander("📚 指标说明"):
-                    st.markdown("""
-                    **核心指标解释：**
-                    - **总收益率**: 策略期间的总体收益表现
-                    - **最大回撤**: 从最高点到最低点的最大损失，反映策略风险
-                    - **夏普比率**: 每单位风险获得的超额收益，越高越好
-                    - **胜率**: 盈利交易数量占总交易数量的比例
-                    - **盈亏比**: 平均盈利交易金额与平均亏损交易金额的比值
-                    - **年化收益率**: 将策略收益换算为年化表现
-                    - **年化波动率**: 策略收益的年化标准差，反映收益稳定性
-                    """)
-                    
             except Exception as e:
                 st.error(f"显示策略指标失败: {str(e)}")
-                st.info("策略指标数据解析出现问题，请检查回测结果数据格式")
+                st.info("策略指标数据解析出现问题，正在从正确的数据源(daily_results)重新计算指标")
             
             # 交易记录（分页显示）
             if results['trades'] and len(results['trades']) > 0:
                 st.subheader("📝 交易记录")
                 
-                # 转换交易记录为DataFrame
+                # 转换交易记录为DataFrame并优化字段显示
                 trades_data = []
                 for trade in results['trades']:
+                    # 转换方向和开平字段
+                    direction, offset = convert_trade_fields(trade)
+                    
+                    # 格式化时间显示
+                    datetime_str = trade['datetime']
+                    if len(datetime_str) > 19:  # 如果包含毫秒
+                        datetime_str = datetime_str[:19]
+                    
                     trades_data.append({
-                        '时间': trade['datetime'],
+                        '时间': datetime_str,
                         '股票': trade['symbol'],
-                        '方向': trade['direction'],
-                        '开平': trade['offset'],
-                        '价格': trade['price'],
-                        '数量': trade['volume'],
-                        '盈亏': trade['pnl']
+                        '方向': direction,
+                        '开平': offset,
+                        '价格': f"{trade['price']:.2f}",
+                        '数量': int(trade['volume']),
+                        '盈亏': f"{trade['pnl']:.2f}"
                     })
                 
                 if trades_data:
                     trades_df = pd.DataFrame(trades_data)
                     
-                    # 分页
+                    # 分页设置
                     page_size = 10
-                    total_pages = len(trades_df) // page_size + (1 if len(trades_df) % page_size > 0 else 0)
+                    total_records = len(trades_df)
+                    total_pages = (total_records + page_size - 1) // page_size  # 向上取整
                     
-                    if total_pages > 1:
-                        page = st.selectbox("选择页面", range(1, total_pages + 1), index=0)
-                        start_idx = (page - 1) * page_size
-                        end_idx = start_idx + page_size
-                        page_trades = trades_df.iloc[start_idx:end_idx]
-                    else:
-                        page_trades = trades_df
+                    # 初始化页面状态
+                    if 'current_page' not in st.session_state:
+                        st.session_state.current_page = 1
                     
+                    # 确保当前页面在有效范围内
+                    if st.session_state.current_page > total_pages:
+                        st.session_state.current_page = total_pages
+                    if st.session_state.current_page < 1:
+                        st.session_state.current_page = 1
+                    
+                    # 计算当前页面的数据范围
+                    start_idx = (st.session_state.current_page - 1) * page_size
+                    end_idx = min(start_idx + page_size, total_records)
+                    page_trades = trades_df.iloc[start_idx:end_idx]
+                    
+                    # 显示当前页面的交易记录
                     st.dataframe(page_trades, use_container_width=True, hide_index=True)
                     
+                    # 分页控制 - 只在有多页时显示
                     if total_pages > 1:
-                        st.info(f"显示第 {page} 页，共 {total_pages} 页，总计 {len(trades_df)} 条交易记录")
+                        # 分页信息和按钮
+                        col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+                        
+                        with col1:
+                            if st.button("⬅️ 上一页", disabled=(st.session_state.current_page <= 1)):
+                                st.session_state.current_page -= 1
+                                st.rerun()
+
+                        with col2:
+                            st.write(f"**第 {st.session_state.current_page} 页 / 共 {total_pages} 页** | **总计 {total_records} 条交易记录**")
+                        
+                        with col3:
+                            if st.button("➡️ 下一页", disabled=(st.session_state.current_page >= total_pages)):
+                                st.session_state.current_page += 1
+                                st.rerun()
+                        
+
+                    
+                    # 显示当前页面记录范围
+                    if total_pages > 1:
+                        st.caption(f"显示第 {start_idx + 1} - {end_idx} 条记录")
+                    
+                    # 添加交易统计摘要
+                    with st.expander("📊 交易统计摘要"):
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        # 统计各类交易
+                        long_trades = len([t for t in results['trades'] if '多' in convert_trade_fields(t)[0]])
+                        short_trades = len([t for t in results['trades'] if '空' in convert_trade_fields(t)[0]])
+                        open_trades = len([t for t in results['trades'] if '开仓' in convert_trade_fields(t)[1]])
+                        close_trades = len([t for t in results['trades'] if '平仓' in convert_trade_fields(t)[1]])
+                        
+                        with col1:
+                            st.metric("做多交易", long_trades)
+                        with col2:
+                            st.metric("做空交易", short_trades)
+                        with col3:
+                            st.metric("开仓交易", open_trades)
+                        with col4:
+                            st.metric("平仓交易", close_trades)
 
 def show_historical_results():
     """显示历史回测结果"""

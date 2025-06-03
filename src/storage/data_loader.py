@@ -13,9 +13,9 @@ from dotenv import load_dotenv
 from vnpy.trader.object import BarData, Interval, Exchange
 
 from src.data_provider.base_data_provider import BaseDataProvider
-# 导入新的抽象架构
 from src.conf.config import config_manager
 from src.data_provider.data_provider_factory import data_provider_factory
+from src.utils.date_utils import trading_date_utils
 
 load_dotenv()
 
@@ -109,6 +109,8 @@ class DataLoader:
             print(f"没有数据源支持股票代码: {symbol}")
             return None
 
+        print(f"获取交易日范围: {start_date} ~ {end_date}")
+        
         # 按优先级尝试各个数据源
         for provider in providers:
             print(f"尝试从 {provider.get_data_source_name()} 获取数据...")
@@ -117,14 +119,41 @@ class DataLoader:
                 if data:
                     # 保存到缓存
                     self._save_to_cache(data, self._get_data_type(symbol, provider), provider.get_data_source_name())
+                    print(f"从 {provider.get_data_source_name()} 获取到 {len(data)} 条数据")
                     return data
                 else:
                     print(f"{provider.get_data_source_name()} 返回空数据")
             except Exception as e:
                 print(f"从 {provider.get_data_source_name()} 获取数据失败: {e}")
-
-        print("所有数据源都无法获取数据")
+        
+        print(f"所有数据源都无法获取范围 {start_date} ~ {end_date} 的数据")
         return None
+
+    def _determine_market(self, symbol: str) -> str:
+        """根据股票代码判断市场类型"""
+        # 查找支持该股票代码的数据提供器
+        providers = self.factory.find_providers_for_symbol(symbol)
+        
+        if providers:
+            try:
+                symbol_info = providers[0].get_symbol_info(symbol)
+                if symbol_info:
+                    # 根据交易所或代码后缀判断市场
+                    exchange = symbol_info.get('exchange', '')
+                    if 'SH' in str(exchange) or 'SZ' in str(exchange) or 'SSE' in str(exchange) or 'SZSE' in str(exchange):
+                        return "CN"  # 中国市场
+                    elif symbol.endswith('.SH') or symbol.endswith('.SZ'):
+                        return "CN"  # 中国市场
+                    else:
+                        return "US"  # 默认美国市场
+            except:
+                pass
+        
+        # 根据代码格式判断
+        if symbol.endswith('.SH') or symbol.endswith('.SZ') or symbol.endswith('.SSE') or symbol.endswith('.SZSE'):
+            return "CN"
+        else:
+            return "US"  # 默认
 
     def _get_data_type(self, symbol: str, provider: BaseDataProvider) -> str:
         """获取数据类型（股票或指数）"""
@@ -186,21 +215,33 @@ class DataLoader:
         return bars
 
     def _get_missing_dates(self, cached_data: List[BarData], start_date: str, end_date: str) -> List[Tuple[str, str]]:
-        """获取缺失的日期范围"""
+        """获取缺失的日期范围，使用交易日历优化"""
         if not cached_data:
             return [(start_date, end_date)]
 
         # 获取缓存中的日期集合
         cached_dates = {bar.datetime.strftime('%Y-%m-%d') for bar in cached_data}
 
-        # 生成完整的日期范围（工作日）
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-        all_dates = pd.date_range(start=start_dt, end=end_dt, freq='B')
-        all_date_strs = {date.strftime('%Y-%m-%d') for date in all_dates}
+        # 确定市场类型（从缓存数据中获取）
+        market = "CN"  # 默认中国市场
+        if cached_data:
+            symbol = cached_data[0].symbol
+            market = self._determine_market(symbol)
 
-        # 找出缺失的日期
-        missing_dates = sorted(all_date_strs - cached_dates)
+        # 使用交易日历获取所有交易日
+        try:
+            all_trading_days = trading_date_utils.get_trading_days_in_range(start_date, end_date, market)
+            all_trading_dates = set(all_trading_days)
+        except Exception as e:
+            print(f"获取交易日列表失败，回退到工作日: {e}")
+            # 回退到原来的工作日逻辑
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            all_dates = pd.date_range(start=start_dt, end=end_dt, freq='B')
+            all_trading_dates = {date.strftime('%Y-%m-%d') for date in all_dates}
+
+        # 找出缺失的交易日
+        missing_dates = sorted(all_trading_dates - cached_dates)
 
         if not missing_dates:
             return []
@@ -214,8 +255,8 @@ class DataLoader:
             current_date = datetime.strptime(missing_dates[i], '%Y-%m-%d')
             prev_date = datetime.strptime(missing_dates[i - 1], '%Y-%m-%d')
 
-            # 如果是连续的工作日
-            if (current_date - prev_date).days <= 3:  # 考虑周末
+            # 如果是连续的交易日（考虑周末和节假日间隔）
+            if (current_date - prev_date).days <= 7:  # 放宽间隔限制，考虑长假期
                 range_end = missing_dates[i]
             else:
                 ranges.append((range_start, range_end))
