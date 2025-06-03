@@ -18,8 +18,8 @@ class BacktestConfig:
     png_output_dir: str = "charts"
     excel_output_dir: str = "reports"
     
-    # 数据库配置
-    results_db_path: str = "../../backtest_results.db"
+    # 数据库配置 - 统一使用项目根目录下的数据库文件
+    results_db_path: str = "backtest_results.db"
     
     # 回测参数
     symbol: str = ""

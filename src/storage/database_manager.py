@@ -7,16 +7,68 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from typing import List, Dict, Any
+import os
 
 import pandas as pd
 
 
 class BacktestResultsDB:
-    """回测结果数据库管理器"""
+    """回测结果数据库管理器 - 单例模式"""
     
-    def __init__(self, db_path: str):
-        self.db_path = db_path
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, db_path: str = None):
+        if cls._instance is None:
+            cls._instance = super(BacktestResultsDB, cls).__new__(cls)
+        return cls._instance
+    
+    def __init__(self, db_path: str = None):
+        # 只初始化一次
+        if self._initialized:
+            return
+            
+        # 确定数据库路径
+        if db_path is None:
+            # 默认路径：项目根目录下的 backtest_results.db
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(current_dir))
+            self.db_path = os.path.join(project_root, 'backtest_results.db')
+        else:
+            # 如果是相对路径，转换为绝对路径
+            if not os.path.isabs(db_path):
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                if db_path.startswith('../'):
+                    # 处理 ../backtest_results.db 这种路径
+                    project_root = os.path.dirname(os.path.dirname(current_dir))
+                    relative_path = db_path.replace('../', '')
+                    self.db_path = os.path.join(project_root, relative_path)
+                elif db_path.startswith('../../'):
+                    # 处理 ../../backtest_results.db 这种路径
+                    project_root = os.path.dirname(os.path.dirname(current_dir))
+                    relative_path = db_path.replace('../../', '')
+                    self.db_path = os.path.join(project_root, relative_path)
+                else:
+                    self.db_path = os.path.abspath(db_path)
+            else:
+                self.db_path = db_path
+        
+        print(f"数据库路径: {self.db_path}")
         self.init_database()
+        self._initialized = True
+    
+    @classmethod
+    def get_instance(cls, db_path: str = None):
+        """获取单例实例"""
+        if cls._instance is None:
+            cls._instance = cls(db_path)
+        return cls._instance
+    
+    @classmethod
+    def reset_instance(cls):
+        """重置单例实例（主要用于测试）"""
+        cls._instance = None
+        cls._initialized = False
     
     def init_database(self):
         """初始化数据库表结构"""
@@ -215,7 +267,8 @@ class BacktestResultsDB:
         """获取所有回测运行记录"""
         with self.get_connection() as conn:
             df = pd.read_sql_query("""
-                SELECT br.*, bs.total_return, bs.max_drawdown, bs.sharpe_ratio
+                SELECT br.*, bs.total_return, bs.max_drawdown, bs.sharpe_ratio, 
+                       bs.win_rate, bs.total_trades
                 FROM backtest_runs br
                 LEFT JOIN backtest_stats bs ON br.run_id = bs.run_id
                 ORDER BY br.created_at DESC

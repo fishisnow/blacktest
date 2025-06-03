@@ -10,6 +10,7 @@ from vnpy_ctastrategy.backtesting import BacktestingEngine
 from src.conf.backtest_config import BacktestConfig
 from src.storage.data_loader import DataLoader
 from src.storage.database_manager import BacktestResultsDB
+from src.storage.db_utils import get_db_manager, init_database
 from result_analyzer import ResultAnalyzer
 
 INITIAL_CAPITAL = 1_000_000
@@ -22,7 +23,11 @@ class BacktestRunner:
 
         # 使用配置化的分析器和数据库管理器
         self.config = config
-        self.db_manager = BacktestResultsDB(config.results_db_path) if config else None
+        # 如果有配置，使用配置中的数据库路径初始化，否则使用默认路径
+        if config and config.results_db_path:
+            self.db_manager = init_database(config.results_db_path)
+        else:
+            self.db_manager = get_db_manager()
         self.analyzer = ResultAnalyzer(config, self.db_manager)
 
         self.data_loaded = False

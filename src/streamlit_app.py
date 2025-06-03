@@ -15,6 +15,7 @@ from plotly.subplots import make_subplots
 from src.conf.backtest_config import BacktestConfig
 from src.blacktest_runner import BacktestRunner, INITIAL_CAPITAL
 from src.storage.database_manager import BacktestResultsDB
+from src.storage.db_utils import get_db_manager
 from src.strategies.trend_following_strategy import TrendFollowingStrategy
 # 导入回测相关模块
 from src.symbol.symbols import get_all_symbols, get_symbols_by_market
@@ -77,7 +78,7 @@ class BacktestExecutor:
     """回测执行器"""
     
     def __init__(self):
-        self.db_manager = BacktestResultsDB('../backtest_results.db')
+        self.db_manager = get_db_manager()
     
     def run_backtest_async(self, symbol: str, strategy_params: dict, date_range: tuple):
         """异步执行回测"""
@@ -132,7 +133,10 @@ class BacktestExecutor:
                 trades = runner.engine.get_all_trades()
                 daily_results = runner.engine.get_all_daily_results()
                 
-                # 保存结果
+                # 保存结果 - 先调用show_results保存基本配置信息
+                runner.show_results()
+                
+                # 然后进行详细分析（这会保存完整的回测结果）
                 runner.analyzer.analyze_results(stats, trades, daily_results)
                 
                 # 转换为可序列化的格式
@@ -999,19 +1003,35 @@ def show_historical_results():
     st.header("📚 历史回测结果")
     
     try:
-        db = BacktestResultsDB('../backtest_results.db')
-        runs_df = db.get_all_runs()
+        db = get_db_manager()
+        runs_data = db.get_all_runs()  # 这是一个字典列表，不是DataFrame
         
-        if runs_df.empty:
+        # 检查是否有数据 - 修复：检查列表是否为空
+        if not runs_data or len(runs_data) == 0:
             st.info("暂无历史回测数据")
             return
         
+        # 将字典列表转换为DataFrame用于显示
+        runs_df = pd.DataFrame(runs_data)
+        
         # 显示历史记录表格
+        display_columns = ['run_id', 'symbol', 'strategy_name', 'total_return', 
+                          'max_drawdown', 'sharpe_ratio', 'win_rate', 'total_trades', 'created_at']
+        
+        # 确保所有列都存在，如果不存在则用默认值填充
+        for col in display_columns:
+            if col not in runs_df.columns:
+                runs_df[col] = 0 if col in ['total_return', 'max_drawdown', 'sharpe_ratio', 'win_rate', 'total_trades'] else ''
+        
+        # 显示数据表格，对数值列进行四舍五入
+        display_df = runs_df[display_columns].copy()
+        numeric_columns = ['total_return', 'max_drawdown', 'sharpe_ratio', 'win_rate']
+        for col in numeric_columns:
+            if col in display_df.columns:
+                display_df[col] = pd.to_numeric(display_df[col], errors='coerce').round(2)
+        
         st.dataframe(
-            runs_df[[
-                'run_id', 'symbol', 'strategy_name', 'total_return', 
-                'max_drawdown', 'sharpe_ratio', 'win_rate', 'total_trades', 'created_at'
-            ]].round(2),
+            display_df,
             use_container_width=True,
             hide_index=True
         )
@@ -1020,8 +1040,13 @@ def show_historical_results():
         if len(runs_df) > 0:
             run_options = {}
             for _, row in runs_df.iterrows():
-                label = f"{row['symbol']} - {row['created_at'][:16]} (收益率: {row['total_return']:.2f}%)"
-                run_options[label] = row['run_id']
+                # 安全地获取数值，处理可能的None值
+                total_return = row.get('total_return', 0)
+                if total_return is None:
+                    total_return = 0
+                
+                label = f"{row.get('symbol', 'Unknown')} - {str(row.get('created_at', ''))[:16]} (收益率: {total_return:.2f}%)"
+                run_options[label] = row.get('run_id', '')
             
             selected_run = st.selectbox("选择查看详情", ["选择一个回测结果"] + list(run_options.keys()))
             
@@ -1037,28 +1062,40 @@ def show_historical_results():
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.write(f"**股票代码:** {run_info['symbol']}")
-                        st.write(f"**策略名称:** {run_info['strategy_name']}")
-                        st.write(f"**回测期间:** {run_info['start_date']} 至 {run_info['end_date']}")
+                        st.write(f"**股票代码:** {run_info.get('symbol', 'Unknown')}")
+                        st.write(f"**策略名称:** {run_info.get('strategy_name', 'Unknown')}")
+                        st.write(f"**回测期间:** {run_info.get('start_date', '')} 至 {run_info.get('end_date', '')}")
                     
                     with col2:
-                        st.write(f"**总收益率:** {run_info['total_return']:.2f}%")
-                        st.write(f"**最大回撤:** {run_info['max_drawdown']:.2f}%")
-                        st.write(f"**夏普比率:** {run_info['sharpe_ratio']:.2f}")
+                        # 安全地获取统计数据，处理可能的None值
+                        stats_info = details.get('stats', {})
+                        total_return = stats_info.get('total_return', 0) or 0
+                        max_drawdown = stats_info.get('max_drawdown', 0) or 0
+                        sharpe_ratio = stats_info.get('sharpe_ratio', 0) or 0
+                        
+                        st.write(f"**总收益率:** {total_return:.2f}%")
+                        st.write(f"**最大回撤:** {max_drawdown:.2f}%")
+                        st.write(f"**夏普比率:** {sharpe_ratio:.2f}")
                     
                     # 性能图表
-                    if not details['daily_results']:
+                    daily_results = details.get('daily_results', [])
+                    if not daily_results or len(daily_results) == 0:
                         st.warning("没有可用的每日结果数据")
                     else:
-                        # 检查daily_results是否为空DataFrame
-                        if hasattr(details['daily_results'], 'empty') and details['daily_results'].empty:
+                        # 修复：检查是否为列表而不是DataFrame
+                        if isinstance(daily_results, list):
+                            fig = create_performance_chart(daily_results)
+                            st.plotly_chart(fig, use_container_width=True)
+                        elif hasattr(daily_results, 'empty') and daily_results.empty:
                             st.warning("每日结果数据为空")
                         else:
-                            fig = create_performance_chart(details['daily_results'])
+                            fig = create_performance_chart(daily_results)
                             st.plotly_chart(fig, use_container_width=True)
                     
     except Exception as e:
         st.error(f"加载历史数据失败: {e}")
+        import traceback
+        st.error(f"详细错误信息: {traceback.format_exc()}")
 
 def main():
     """主函数"""
