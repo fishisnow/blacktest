@@ -62,7 +62,7 @@ class ConfigManager:
         # Futu 配置
         futu_host = os.getenv('FUTU_HOST', '127.0.0.1')
         futu_port = int(os.getenv('FUTU_PORT', '11111'))
-        futu_enabled = os.getenv('FUTU_ENABLED', 'true').lower() == 'true'
+        futu_enabled = os.getenv('FUTU_ENABLED', 'false').lower() == 'true'
         configs[DataSource.FUTU] = DataSourceConfig(
             source=DataSource.FUTU,
             enabled=futu_enabled,

@@ -18,6 +18,7 @@ from src.storage.database_manager import BacktestResultsDB
 from src.strategies.trend_following_strategy import TrendFollowingStrategy
 # 导入回测相关模块
 from src.symbol.symbols import get_all_symbols, get_symbols_by_market
+from src.storage.data_loader import DataLoader
 
 # 页面配置
 st.set_page_config(
@@ -115,19 +116,38 @@ class BacktestExecutor:
                 
                 serializable_daily_results = []
                 cumulative_pnl = 0
+                win_count = 0  # 盈利天数
+                loss_count = 0  # 亏损天数
                 
                 for result in daily_results:
                     # 累积总盈亏
-                    cumulative_pnl += getattr(result, 'net_pnl', 0)
-                    # 计算账户余额 = 初始资金 + 累积盈亏
-                    balance = INITIAL_CAPITAL + cumulative_pnl
+                    net_pnl = getattr(result, 'net_pnl', 0)
+                    cumulative_pnl += net_pnl
+                    
+                    # 统计盈亏天数
+                    if net_pnl > 0:
+                        win_count += 1
+                    elif net_pnl < 0:
+                        loss_count += 1
+                    
+                    # 计算盈亏比（避免除零错误）
+                    if loss_count > 0:
+                        win_loss_ratio = win_count / loss_count
+                    else:
+                        win_loss_ratio = win_count if win_count > 0 else 0
+                    
+                    # 计算收益率（相对于初始资金）
+                    return_ratio = (cumulative_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0
                     
                     result_dict = {
                         'date': str(getattr(result, 'date', '')),
-                        'balance': float(balance),  # ✅ 使用计算出的余额
                         'net_pnl': float(getattr(result, 'net_pnl', 0)),
                         'pnl': float(getattr(result, 'pnl', 0)),
-                        'total_pnl': float(getattr(result, 'total_pnl', cumulative_pnl))  # 可选：添加总盈亏字段
+                        'total_pnl': float(cumulative_pnl),  # 累积总盈亏
+                        'return_ratio': float(return_ratio),  # 收益率（%）
+                        'win_count': int(win_count),  # 盈利天数
+                        'loss_count': int(loss_count),  # 亏损天数
+                        'win_loss_ratio': float(win_loss_ratio)  # 盈利天数/亏损天数比
                     }
                     serializable_daily_results.append(result_dict)
                 
@@ -151,6 +171,112 @@ class BacktestExecutor:
         finally:
             st.session_state.backtest_running = False
 
+def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.Figure:
+    """创建股票K线图"""
+    try:
+        # 使用DataLoader直接获取数据
+        data_loader = DataLoader()
+        
+        # 获取历史数据
+        print(f"正在获取 {symbol} 从 {start_date} 到 {end_date} 的历史数据...")
+        bars_data = data_loader.get_index_data(symbol, start_date, end_date)
+        
+        if bars_data and len(bars_data) > 0:
+            # 转换数据格式
+            dates = []
+            opens = []
+            highs = []
+            lows = []
+            closes = []
+            volumes = []
+            
+            for bar in bars_data:
+                dates.append(bar.datetime)
+                opens.append(bar.open_price)
+                highs.append(bar.high_price)
+                lows.append(bar.low_price)
+                closes.append(bar.close_price)
+                volumes.append(bar.volume)
+            
+            # 创建K线图
+            fig = make_subplots(
+                rows=2, cols=1,
+                subplot_titles=(f'{symbol} - 股价走势', '成交量'),
+                vertical_spacing=0.1,
+                row_heights=[0.7, 0.3],
+                shared_xaxes=True
+            )
+            
+            # K线图
+            fig.add_trace(
+                go.Candlestick(
+                    x=dates,
+                    open=opens,
+                    high=highs,
+                    low=lows,
+                    close=closes,
+                    name='K线',
+                    increasing_line_color='red',
+                    decreasing_line_color='green'
+                ),
+                row=1, col=1
+            )
+            
+            # 成交量
+            volume_colors = ['red' if c >= o else 'green' for c, o in zip(closes, opens)]
+            fig.add_trace(
+                go.Bar(
+                    x=dates,
+                    y=volumes,
+                    name='成交量',
+                    marker_color=volume_colors,
+                    opacity=0.7
+                ),
+                row=2, col=1
+            )
+            
+            # 更新布局
+            fig.update_layout(
+                title=f'{symbol} 历史走势图',
+                height=600,
+                showlegend=False,
+                xaxis_rangeslider_visible=False,
+                font=dict(size=12)
+            )
+            
+            fig.update_yaxes(title_text="股价", row=1, col=1)
+            fig.update_yaxes(title_text="成交量", row=2, col=1)
+            fig.update_xaxes(title_text="日期", row=2, col=1)
+            
+            print(f"成功生成包含 {len(bars_data)} 条数据的K线图")
+            return fig
+        else:
+            # 返回空图表
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"无法获取 {symbol} 的历史数据\n请检查股票代码是否正确或数据源连接",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=16)
+            )
+            fig.update_layout(height=400, title=f"{symbol} K线图")
+            return fig
+            
+    except Exception as e:
+        # 返回错误信息图表
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"K线图生成失败: {str(e)}\n\n可能的原因：\n- 数据源连接问题\n- 股票代码格式错误\n- 网络连接异常",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=14)
+        )
+        fig.update_layout(height=400, title="K线图生成失败")
+        print(f"K线图生成异常: {e}")
+        return fig
+
 def create_performance_chart(daily_results) -> go.Figure:
     """创建性能图表"""
     if not daily_results or len(daily_results) == 0:
@@ -165,18 +291,27 @@ def create_performance_chart(daily_results) -> go.Figure:
             for result in daily_results:
                 df_data.append({
                     'date': result.get('date', ''),
-                    'balance': result.get('balance', 0),
-                    'net_pnl': result.get('net_pnl', 0)
+                    'total_pnl': result.get('total_pnl', 0),
+                    'return_ratio': result.get('return_ratio', 0),
+                    'net_pnl': result.get('net_pnl', 0),
+                    'win_loss_ratio': result.get('win_loss_ratio', 0)
                 })
             df = pd.DataFrame(df_data)
         else:
             # 对象格式（原始vnpy对象）
             df_data = []
+            cumulative_pnl = 0
             for daily_result in daily_results:
+                net_pnl = getattr(daily_result, 'net_pnl', 0)
+                cumulative_pnl += net_pnl
+                # 计算收益率
+                return_ratio = (cumulative_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0
                 df_data.append({
                     'date': getattr(daily_result, 'date', ''),
-                    'balance': getattr(daily_result, 'balance', 0),
-                    'net_pnl': getattr(daily_result, 'net_pnl', 0)
+                    'total_pnl': cumulative_pnl,
+                    'return_ratio': return_ratio,
+                    'net_pnl': net_pnl,
+                    'win_loss_ratio': 0  # 这里需要重新计算，暂时设为0
                 })
             df = pd.DataFrame(df_data)
     else:
@@ -185,6 +320,20 @@ def create_performance_chart(daily_results) -> go.Figure:
     
     if df.empty:
         return go.Figure()
+    
+    # 调试信息：打印数据状态
+    print(f"图表数据状态: {len(df)} 行数据")
+    print(f"收益率范围: {df['return_ratio'].min():.4f} ~ {df['return_ratio'].max():.4f}")
+    print(f"日期范围: {df['date'].min()} ~ {df['date'].max()}")
+    
+    # 确定x轴显示模式
+    data_length = len(df)
+    if data_length > 500:
+        print(f"应用长期模式: {data_length}天数据，显示季度刻度")
+    elif data_length > 250:
+        print(f"应用中期模式: {data_length}天数据，显示月度刻度")
+    else:
+        print(f"应用短期模式: {data_length}天数据，显示详细刻度")
     
     # 确保date列是datetime类型
     try:
@@ -197,24 +346,44 @@ def create_performance_chart(daily_results) -> go.Figure:
     
     # 创建子图
     fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=('账户资产曲线', '每日盈亏'),
-        vertical_spacing=0.1,
-        row_heights=[0.7, 0.3]
+        rows=3, cols=1,
+        subplot_titles=('累积收益率与总盈亏', '每日盈亏', '盈利天数/亏损天数比'),
+        vertical_spacing=0.08,
+        row_heights=[0.4, 0.35, 0.25],
+        specs=[[{"secondary_y": True}],
+               [{"secondary_y": False}],
+               [{"secondary_y": False}]]
     )
     
-    # 资产曲线
+    # 第一个子图：双y轴显示收益率和总盈亏
+    # 左轴：收益率曲线
     fig.add_trace(
         go.Scatter(
             x=df['date'],
-            y=df['balance'],
+            y=df['return_ratio'],
             mode='lines',
-            name='账户资产',
-            line=dict(color='blue', width=2),
-            hovertemplate='日期: %{x}<br>资产: %{y:,.0f}<extra></extra>'
+            name='累积收益率 (%)',
+            line=dict(color='green', width=2),
+            hovertemplate='%{y:.2f}%<extra></extra>'
         ),
-        row=1, col=1
+        row=1, col=1, secondary_y=False
     )
+    
+    # 右轴：总盈亏曲线
+    fig.add_trace(
+        go.Scatter(
+            x=df['date'],
+            y=df['total_pnl'],
+            mode='lines',
+            name='累积总盈亏',
+            line=dict(color='blue', width=2, dash='dot'),
+            hovertemplate='%{y:,.0f}<extra></extra>'
+        ),
+        row=1, col=1, secondary_y=True
+    )
+    
+    # 添加零线（左轴）
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", row=1, col=1)
     
     # 每日盈亏
     colors = ['green' if x >= 0 else 'red' for x in df['net_pnl']]
@@ -225,23 +394,74 @@ def create_performance_chart(daily_results) -> go.Figure:
             name='每日盈亏',
             marker_color=colors,
             opacity=0.7,
-            hovertemplate='日期: %{x}<br>盈亏: %{y:,.0f}<extra></extra>'
+            hovertemplate='%{y:,.0f}<extra></extra>'
         ),
         row=2, col=1
     )
     
+    # 盈利天数/亏损天数比走势
+    if 'win_loss_ratio' in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df['date'],
+                y=df['win_loss_ratio'],
+                mode='lines+markers',
+                name='盈利天数/亏损天数比',
+                line=dict(color='purple', width=2),
+                marker=dict(size=4),
+                hovertemplate='%{y:.2f}<extra></extra>'
+            ),
+            row=3, col=1
+        )
+        
+        # 添加比值=1的参考线
+        fig.add_hline(y=1, line_dash="dash", line_color="orange", row=3, col=1)
+    
     # 更新布局
     fig.update_layout(
         title='回测性能分析',
-        height=800,
+        height=900,
         showlegend=True,
-        hovermode='x unified',
+        hovermode='x unified',  # 恢复统一悬停模式以显示日期
         font=dict(size=12)
     )
     
-    fig.update_xaxes(title_text="日期", row=2, col=1)
-    fig.update_yaxes(title_text="资产净值", row=1, col=1)
+    # 设置x轴标题
+    fig.update_xaxes(title_text="日期", row=3, col=1)
+    
+    # 设置y轴标题
+    fig.update_yaxes(title_text="收益率 (%)", secondary_y=False, row=1, col=1)
+    fig.update_yaxes(title_text="累积总盈亏", secondary_y=True, row=1, col=1)
     fig.update_yaxes(title_text="每日盈亏", row=2, col=1)
+    fig.update_yaxes(title_text="盈利天数/亏损天数比", row=3, col=1)
+    
+    # 优化x轴显示：根据数据长度智能调整
+    if data_length > 500:  # 数据超过500天（约2年）
+        # 长期数据：只显示季度标记
+        fig.update_xaxes(
+            showticklabels=True,
+            tickmode='auto',
+            nticks=8,  # 限制为8个刻度点
+            tickangle=0,  # 水平显示
+            tickformat='%Y-%m'  # 只显示年月
+        )
+    elif data_length > 250:  # 数据超过250天（约1年）
+        # 中期数据：显示月度标记
+        fig.update_xaxes(
+            showticklabels=True,
+            tickmode='auto', 
+            nticks=12,  # 限制为12个刻度点
+            tickangle=0,
+            tickformat='%Y-%m'
+        )
+    else:
+        # 短期数据：正常显示
+        fig.update_xaxes(
+            showticklabels=True,
+            tickmode='auto',
+            tickangle=45,
+            tickformat='%m-%d'  # 只显示月日
+        )
     
     return fig
 
@@ -474,21 +694,41 @@ def show_backtest_interface():
             stats = results['stats']
             
             # 关键指标
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+            metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
             
             with metric_col1:
                 total_return = stats.get('总收益率', 0) * 100 if '总收益率' in stats else 0
                 st.metric("总收益率", f"{total_return:.2f}%")
             
             with metric_col2:
+                # 计算当前收益率（相对初始资金）
+                if results['daily_results']:
+                    current_return_ratio = results['daily_results'][-1].get('return_ratio', 0) if results['daily_results'] else 0
+                else:
+                    current_return_ratio = 0
+                st.metric("当前收益率", f"{current_return_ratio:.2f}%")
+            
+            with metric_col3:
+                # 计算总盈亏
+                if results['daily_results']:
+                    total_pnl = results['daily_results'][-1].get('total_pnl', 0) if results['daily_results'] else 0
+                else:
+                    total_pnl = 0
+                st.metric("总盈亏", f"{total_pnl:,.0f}")
+            
+            with metric_col4:
                 max_drawdown = stats.get('最大回撤', 0) * 100 if '最大回撤' in stats else 0
                 st.metric("最大回撤", f"{max_drawdown:.2f}%")
             
-            with metric_col3:
-                sharpe_ratio = stats.get('夏普比率', 0) if '夏普比率' in stats else 0
-                st.metric("夏普比率", f"{sharpe_ratio:.2f}")
+            with metric_col5:
+                # 计算最终盈利天数/亏损天数比
+                if results['daily_results']:
+                    final_win_loss_ratio = results['daily_results'][-1].get('win_loss_ratio', 0) if results['daily_results'] else 0
+                else:
+                    final_win_loss_ratio = 0
+                st.metric("盈利天数/亏损天数", f"{final_win_loss_ratio:.2f}")
             
-            with metric_col4:
+            with metric_col6:
                 total_trades = len(results['trades']) if results['trades'] else 0
                 st.metric("总交易次数", total_trades)
             
@@ -498,53 +738,109 @@ def show_backtest_interface():
                 fig = create_performance_chart(results['daily_results'])
                 st.plotly_chart(fig, use_container_width=True)
             
-            # 详细统计
-            st.subheader("📋 详细统计")
-            # 使用最安全的方法：所有数据都转换为字符串显示
-            try:
-                display_data = []
-                for key, value in stats.items():
-                    # 统一转换为安全的字符串格式
-                    try:
-                        if pd.isna(value) or value is None:
-                            value_str = "N/A"
-                        elif isinstance(value, pd.Series):
-                            value_str = f"Series(长度: {len(value)})"
-                        elif isinstance(value, (list, tuple)):
-                            value_str = f"列表(长度: {len(value)})"
-                        elif isinstance(value, dict):
-                            value_str = f"字典(键数: {len(value)})"
-                        elif isinstance(value, (int, float)):
-                            if np.isinf(value):
-                                value_str = "∞" if value > 0 else "-∞"
-                            elif np.isnan(value):
-                                value_str = "NaN"
-                            else:
-                                value_str = f"{value:.4f}" if isinstance(value, float) else str(value)
-                        else:
-                            value_str = str(value)[:50]  # 限制长度避免显示问题
-                    except:
-                        value_str = "无法显示"
-                    
-                    display_data.append({"指标": str(key), "数值": value_str})
+            # 标的走势分析
+            st.subheader("📊 标的走势分析")
+            st.write("对比策略表现与标的股票走势，分析策略的有效性")
+            
+            # 获取回测的时间范围
+            if results['daily_results'] and len(results['daily_results']) > 0:
+                start_date = results['daily_results'][0]['date'][:10]  # 取日期部分
+                end_date = results['daily_results'][-1]['date'][:10]   # 取日期部分
                 
-                # 使用简单的表格显示
+                try:
+                    # 创建K线图
+                    kline_fig = create_stock_kline_chart(results['symbol'], start_date, end_date)
+                    st.plotly_chart(kline_fig, use_container_width=True)
+                    
+                    # 添加分析提示
+                    st.info("💡 **分析提示**: 对比上方策略收益曲线与此K线图，可以观察：\n"
+                           "- 策略在股票上涨/下跌期间的表现\n"
+                           "- 策略是否能在震荡市中获利\n"
+                           "- 回撤期是否对应股票的下跌趋势")
+                    
+                except Exception as e:
+                    st.error(f"K线图生成失败: {str(e)}")
+                    st.write("无法显示标的走势图，可能的原因：")
+                    st.write("- 数据源连接问题")
+                    st.write("- 股票代码格式不正确")
+                    st.write("- 时间范围超出数据范围")
+            else:
+                st.warning("无法获取回测时间范围，无法生成K线图")
+            
+            # 详细统计
+            st.subheader("📋 策略指标详情")
+            
+            # 只显示重要的策略指标
+            try:
+                # 筛选出有用的指标
+                important_metrics = {
+                    '总收益率': '策略的总体收益表现',
+                    '最大回撤': '策略面临的最大风险',
+                    '夏普比率': '风险调整后的收益指标',
+                    '胜率': '盈利交易占比',
+                    '盈亏比': '平均盈利与平均亏损的比率',
+                    '年化收益率': '按年化计算的收益率',
+                    '年化波动率': '收益的年化标准差',
+                    '最大连续亏损天数': '最长的连续亏损期',
+                    '平均持仓天数': '每笔交易的平均持有时间'
+                }
+                
+                display_data = []
+                for key, description in important_metrics.items():
+                    if key in stats:
+                        value = stats[key]
+                        try:
+                            if pd.isna(value) or value is None:
+                                value_str = "N/A"
+                            elif isinstance(value, (int, float)):
+                                if np.isinf(value):
+                                    value_str = "∞" if value > 0 else "-∞"
+                                elif np.isnan(value):
+                                    value_str = "NaN"
+                                else:
+                                    # 根据指标类型格式化
+                                    if '率' in key or '比' in key:
+                                        if key == '胜率':
+                                            value_str = f"{value * 100:.2f}%" if value <= 1 else f"{value:.2f}%"
+                                        elif '收益率' in key:
+                                            value_str = f"{value * 100:.2f}%" if abs(value) <= 10 else f"{value:.2f}%"
+                                        else:
+                                            value_str = f"{value:.4f}"
+                                    else:
+                                        value_str = f"{value:.2f}"
+                            else:
+                                value_str = str(value)[:50]
+                        except:
+                            value_str = "无法解析"
+                        
+                        display_data.append({
+                            "指标": key,
+                            "数值": value_str,
+                            "说明": description
+                        })
+                
                 if display_data:
                     display_df = pd.DataFrame(display_data)
-                    # 确保所有列都是字符串类型
-                    display_df = display_df.astype(str)
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
                 else:
-                    st.info("没有可显示的统计数据")
+                    st.info("没有可显示的策略指标")
+                    
+                # 添加指标解释
+                with st.expander("📚 指标说明"):
+                    st.markdown("""
+                    **核心指标解释：**
+                    - **总收益率**: 策略期间的总体收益表现
+                    - **最大回撤**: 从最高点到最低点的最大损失，反映策略风险
+                    - **夏普比率**: 每单位风险获得的超额收益，越高越好
+                    - **胜率**: 盈利交易数量占总交易数量的比例
+                    - **盈亏比**: 平均盈利交易金额与平均亏损交易金额的比值
+                    - **年化收益率**: 将策略收益换算为年化表现
+                    - **年化波动率**: 策略收益的年化标准差，反映收益稳定性
+                    """)
                     
             except Exception as e:
-                st.error(f"显示统计数据失败: {str(e)}")
-                # 备用方案
-                st.write("**统计数据概览:**")
-                for i, key in enumerate(list(stats.keys())[:10]):  # 只显示前10个
-                    st.write(f"{i+1}. {key}")
-                if len(stats) > 10:
-                    st.write(f"... 还有 {len(stats) - 10} 个统计项")
+                st.error(f"显示策略指标失败: {str(e)}")
+                st.info("策略指标数据解析出现问题，请检查回测结果数据格式")
             
             # 交易记录（分页显示）
             if results['trades'] and len(results['trades']) > 0:
