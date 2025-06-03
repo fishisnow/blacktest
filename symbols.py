@@ -129,6 +129,11 @@ def get_symbols_by_market(market: str) -> Dict[str, dict]:
     return _symbol_manager.get_symbols_by_market(market)
 
 
+def get_symbols_by_type(symbol_type: str) -> Dict[str, dict]:
+    """获取指定类型的所有股票代码"""
+    return _symbol_manager.get_symbols_by_type(symbol_type)
+
+
 def get_all_symbols() -> Dict[str, dict]:
     """获取所有支持的股票代码"""
     return _symbol_manager.get_all_symbols()

@@ -13,7 +13,9 @@ __pycache__
 venv
 
 # 回测结果文件
-backtest_results.*
+backtest_results
+backtest_results.db
+
 
 # 日志文件
 *.log 

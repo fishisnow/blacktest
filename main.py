@@ -16,14 +16,20 @@ from vnpy.trader.constant import Exchange
 from strategies.trend_following_strategy import TrendFollowingStrategy
 from data_loader import DataLoader
 from result_analyzer import ResultAnalyzer
+from backtest_config import BacktestConfig
+from database_manager import BacktestResultsDB
 
 
 class BacktestRunner:
-    def __init__(self):
+    def __init__(self, config: BacktestConfig = None):
         self.engine = BacktestingEngine()
-        # 使用.env文件中的token
         self.data_loader = DataLoader()
-        self.analyzer = ResultAnalyzer()
+        
+        # 使用配置化的分析器和数据库管理器
+        self.config = config
+        self.db_manager = BacktestResultsDB(config.results_db_path) if config else None
+        self.analyzer = ResultAnalyzer(config, self.db_manager)
+        
         self.data_loaded = False
 
     def _convert_to_vt_symbol(self, symbol: str) -> str:
@@ -100,26 +106,9 @@ class BacktestRunner:
         trades = self.engine.get_all_trades()
         daily_results = self.engine.get_all_daily_results()
 
-        # 调试信息
-        print(f"\n🔍 调试信息:")
-        print(f"交易记录数量: {len(trades)}")
-        print(f"每日结果数量: {len(daily_results)}")
-
-        if trades:
-            print(f"交易记录示例属性: {[attr for attr in dir(trades[0]) if not attr.startswith('_')]}")
-            print(f"第一笔交易详情:")
-            trade = trades[0]
-            for attr in ['datetime', 'time', 'symbol', 'direction', 'offset', 'price', 'volume', 'pnl', 'commission']:
-                if hasattr(trade, attr):
-                    print(f"  {attr}: {getattr(trade, attr)}")
-
-        if daily_results:
-            print(f"每日结果示例属性: {[attr for attr in dir(daily_results[0]) if not attr.startswith('_')]}")
-            print(f"第一天结果详情:")
-            result = daily_results[0]
-            for attr in ['date', 'datetime', 'balance', 'total_value', 'pnl', 'net_pnl', 'commission']:
-                if hasattr(result, attr):
-                    print(f"  {attr}: {getattr(result, attr)}")
+        # 保存配置到数据库
+        if self.db_manager and self.config:
+            self.db_manager.save_backtest_run(self.config)
 
         # 分析和可视化结果
         self.analyzer.analyze_results(stats, trades, daily_results)
@@ -132,11 +121,6 @@ def main():
 
     # 定义回测参数
     indexes = {
-        # "000016": "上证50",
-        # "000300": "沪深300",
-        # "399006": "创业板指",
-        # "000001": "上证指数",
-        # "399001": "深证成指"
         "688981.SH": "中芯国际"
     }
 
@@ -156,9 +140,19 @@ def main():
         print(f"\n开始回测 {name} ({symbol})")
         print("-" * 30)
 
-        runner = BacktestRunner()
+        # 创建配置
+        config = BacktestConfig(
+            output_base_dir="./backtest_results",
+            symbol=symbol,
+            strategy_name="TrendFollowingStrategy",
+            start_date=start_date.strftime("%Y-%m-%d"),
+            end_date=end_date.strftime("%Y-%m-%d"),
+            strategy_params=strategy_setting
+        )
 
-        # 设置回测引擎 (现在会自动转换股票代码格式)
+        runner = BacktestRunner(config)
+
+        # 设置回测引擎
         runner.setup_engine(symbol, start_date, end_date)
 
         # 添加策略

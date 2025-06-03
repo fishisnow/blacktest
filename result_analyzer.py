@@ -5,6 +5,8 @@
 import pandas as pd
 import numpy as np
 import matplotlib
+from streamlit.runtime import stats
+
 matplotlib.use('Agg')  # 使用非交互式后端
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -13,6 +15,8 @@ from datetime import datetime
 from typing import List, Dict, Any
 import matplotlib.dates as mdates
 from matplotlib.font_manager import FontProperties
+from backtest_config import BacktestConfig
+from database_manager import BacktestResultsDB
 
 # 设置中文字体
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
@@ -22,11 +26,13 @@ plt.rcParams['axes.unicode_minus'] = False
 class ResultAnalyzer:
     """回测结果分析器"""
     
-    def __init__(self):
+    def __init__(self, config: 'BacktestConfig' = None, db_manager: 'BacktestResultsDB' = None):
         """初始化分析器"""
+        self.config = config
+        self.db_manager = db_manager
         self.results_data = {}
         
-    def analyze_results(self, stats: Dict, trades: List, daily_results: List):
+    def analyze_results(self, stats: pd.DataFrame, trades: List, daily_results: List):
         """分析回测结果"""
         print("\n" + "="*50)
         print("回测结果分析")
@@ -42,33 +48,49 @@ class ResultAnalyzer:
         self._analyze_daily_results(daily_results)
         
         # 生成可视化图表
-        self._create_charts(daily_results, trades)
+        file_paths = self._create_charts(daily_results, trades, stats)
         
-    def _print_statistics(self, stats: Dict):
+        # 保存到数据库
+        if self.db_manager and self.config:
+            self.db_manager.save_backtest_results(
+                self.config.run_id, stats, trades, daily_results,
+                file_paths.get('html'), file_paths.get('png'), file_paths.get('excel')
+            )
+            print(f"📊 回测结果已保存到数据库，运行ID: {self.config.run_id}")
+        
+    def _print_statistics(self, stats: pd.DataFrame):
         """打印统计信息"""
         print("\n📊 核心统计指标:")
         print("-" * 30)
         
-        key_metrics = [
-            ("总收益率", "total_return", "%"),
-            ("年化收益率", "annual_return", "%"),
-            ("最大回撤", "max_drawdown", "%"),
-            ("夏普比率", "sharpe_ratio", ""),
-            ("盈利因子", "profit_factor", ""),
-            ("胜率", "win_rate", "%"),
-            ("交易次数", "total_trades", "次")
-        ]
+        # 如果 stats 不是有效的 DataFrame，跳过
+        if stats is None or not isinstance(stats, pd.DataFrame) or stats.empty:
+            print("⚠️  无统计数据")
+            return
         
-        for name, key, unit in key_metrics:
-            if key in stats:
-                value = stats[key]
-                if unit == "%":
-                    print(f"{name:<12}: {value:.2f}%")
-                elif unit == "次":
-                    print(f"{name:<12}: {int(value)}次")
+        # 从 DataFrame 中提取数据并显示
+        try:
+            for index, row in stats.iterrows():
+                # 假设 DataFrame 有名为 'value' 的列，如果结构不同需要调整
+                if 'value' in stats.columns:
+                    value = row['value']
+                    if isinstance(value, (int, float)):
+                        if 'rate' in str(index).lower() or 'ratio' in str(index).lower():
+                            print(f"{index:<12}: {value:.2f}")
+                        elif 'return' in str(index).lower() or 'drawdown' in str(index).lower():
+                            print(f"{index:<12}: {value:.2f}%")
+                        else:
+                            print(f"{index:<12}: {value:.2f}")
+                    else:
+                        print(f"{index:<12}: {value}")
                 else:
-                    print(f"{name:<12}: {value:.2f}")
-            
+                    # 如果没有 'value' 列，显示所有列的值
+                    print(f"{index}: {row.to_dict()}")
+        except Exception as e:
+            print(f"显示统计信息时出错: {e}")
+            print("统计数据结构:")
+            print(stats.head())
+    
     def _analyze_trades(self, trades: List):
         """分析交易记录"""
         if not trades:
@@ -202,19 +224,32 @@ class ResultAnalyzer:
         else:
             print("⚠️  每日收益数据为空或全为0")
     
-    def _create_charts(self, daily_results: List, trades: List):
-        """创建可视化图表"""
+    def _create_charts(self, daily_results: List, trades: List, stats: pd.DataFrame = None) -> Dict[str, str]:
+        """创建可视化图表并返回文件路径"""
         if not daily_results:
             print("无法创建图表：缺少每日结果数据")
-            return
-            
+            return {}
+        
+        file_paths = {}
+        
         # 创建matplotlib图表
-        self._create_matplotlib_chart(daily_results, trades)
+        png_path = self._create_matplotlib_chart(daily_results, trades)
+        if png_path:
+            file_paths['png'] = png_path
         
         # 创建plotly交互式图表
-        self._create_plotly_chart(daily_results, trades)
+        html_path = self._create_plotly_chart(daily_results, trades)
+        if html_path:
+            file_paths['html'] = html_path
         
-    def _create_matplotlib_chart(self, daily_results: List, trades: List):
+        # 创建Excel报告
+        excel_path = self._create_excel_report(daily_results, trades, stats)
+        if excel_path:
+            file_paths['excel'] = excel_path
+        
+        return file_paths
+    
+    def _create_matplotlib_chart(self, daily_results: List, trades: List) -> str:
         """创建matplotlib图表"""
         try:
             # 提取数据 - 修复数据访问
@@ -229,7 +264,7 @@ class ResultAnalyzer:
             
             if not dates or not net_pnls:
                 print("无法创建matplotlib图表：缺少必要数据")
-                return
+                return None
             
             # 计算累计资产曲线 (假设初始资金1000000)
             initial_capital = 1000000
@@ -265,15 +300,23 @@ class ResultAnalyzer:
             plt.tight_layout()
             plt.xticks(rotation=45)
             
-            # 保存图表
-            plt.savefig('backtest_results.png', dpi=300, bbox_inches='tight')
-            print("📈 matplotlib图表已保存为 backtest_results.png")
-            # plt.show()  # 移除显示调用，避免GUI问题
+            # 保存图表到配置的路径
+            if self.config:
+                png_path = self.config.get_output_path('png', 'backtest_results.png')
+            else:
+                png_path = 'backtest_results.png'
+            
+            plt.savefig(png_path, dpi=300, bbox_inches='tight')
+            print(f"📈 matplotlib图表已保存为 {png_path}")
+            plt.close()  # 关闭图表以释放内存
+            
+            return png_path
             
         except Exception as e:
             print(f"创建matplotlib图表失败: {e}")
+            return None
     
-    def _create_plotly_chart(self, daily_results: List, trades: List):
+    def _create_plotly_chart(self, daily_results: List, trades: List) -> str:
         """创建plotly交互式图表"""
         try:
             # 提取数据
@@ -287,7 +330,7 @@ class ResultAnalyzer:
             
             if not dates or not net_pnls:
                 print("无法创建plotly图表：缺少必要数据")
-                return
+                return None
             
             # 计算累计资产曲线
             initial_capital = 1000000
@@ -355,15 +398,20 @@ class ResultAnalyzer:
             fig.update_yaxes(title_text="每日盈亏", row=2, col=1)
             fig.update_yaxes(title_text="累计盈亏", row=3, col=1)
             
-            # 保存HTML文件
-            fig.write_html("backtest_results.html")
-            print("📊 plotly交互式图表已保存为 backtest_results.html")
+            # 保存HTML文件到配置的路径
+            if self.config:
+                html_path = self.config.get_output_path('html', 'backtest_results.html')
+            else:
+                html_path = 'backtest_results.html'
             
-            # 显示图表
-            # fig.show()  # 移除显示调用，避免GUI问题
+            fig.write_html(html_path)
+            print(f"📊 plotly交互式图表已保存为 {html_path}")
+            
+            return html_path
             
         except Exception as e:
             print(f"创建plotly图表失败: {e}")
+            return None
     
     def _add_trade_signals_fixed(self, fig, trades: List, dates: List, balances: List):
         """添加买卖信号标记 - 修复版本"""
@@ -440,45 +488,77 @@ class ResultAnalyzer:
         except Exception as e:
             print(f"添加交易信号失败: {e}")
     
-    def save_results_to_excel(self, stats: Dict, trades: List, daily_results: List, filename: str = "backtest_report.xlsx"):
-        """保存结果到Excel文件"""
+    def _create_excel_report(self, daily_results: List, trades: List, stats: pd.DataFrame = None) -> str:
+        """创建Excel报告"""
         try:
-            with pd.ExcelWriter(filename) as writer:
-                # 统计数据
-                stats_df = pd.DataFrame(list(stats.items()), columns=['指标', '数值'])
-                stats_df.to_excel(writer, sheet_name='统计数据', index=False)
-                
-                # 交易记录
-                if trades:
-                    trade_data = []
-                    for trade in trades:
-                        trade_data.append({
-                            '时间': getattr(trade, 'datetime', ''),
-                            '方向': getattr(trade, 'direction', ''),
-                            '价格': getattr(trade, 'price', 0),
-                            '数量': getattr(trade, 'volume', 0),
-                            '盈亏': getattr(trade, 'pnl', 0)
-                        })
-                    trades_df = pd.DataFrame(trade_data)
-                    trades_df.to_excel(writer, sheet_name='交易记录', index=False)
-                
-                # 每日结果
-                if daily_results:
-                    daily_data = []
-                    for result in daily_results:
-                        daily_data.append({
-                            '日期': getattr(result, 'date', ''),
-                            '资产': getattr(result, 'balance', 0),
-                            '盈亏': getattr(result, 'pnl', 0),
-                            '净盈亏': getattr(result, 'net_pnl', 0)
-                        })
-                    daily_df = pd.DataFrame(daily_data)
-                    daily_df.to_excel(writer, sheet_name='每日结果', index=False)
+            if self.config:
+                excel_path = self.config.get_output_path('excel', 'backtest_report.xlsx')
+            else:
+                excel_path = 'backtest_report.xlsx'
             
-            print(f"📋 回测报告已保存为 {filename}")
+            # 使用openpyxl引擎创建Excel文件
+            with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+                # 检查 stats 是否为有效的 DataFrame
+                has_stats = stats is not None and isinstance(stats, pd.DataFrame) and not stats.empty
+                
+                # 总是先创建概要页，确保至少有一个工作表
+                summary_data = []
+                summary_data.append(['回测报告生成时间', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+                summary_data.append(['统计数据', '有' if has_stats else '无'])
+                summary_data.append(['交易记录数量', str(len(trades)) if trades else '0'])
+                summary_data.append(['每日数据数量', str(len(daily_results)) if daily_results else '0'])
+                
+                summary_df = pd.DataFrame(summary_data, columns=['项目', '值'])
+                summary_df.to_excel(writer, sheet_name='概要', index=False)
+                
+                # 如果有统计数据，创建统计数据工作表
+                if has_stats:
+                    try:
+                        # stats 是 DataFrame，直接写入
+                        stats.to_excel(writer, sheet_name='统计数据', index=True)
+                    except Exception as e:
+                        print(f"创建统计数据工作表失败: {e}")
+                        # 即使统计数据工作表创建失败，也要继续创建其他工作表
+                
+                # 如果有交易记录，创建交易记录工作表
+                if trades and len(trades) > 0:
+                    try:
+                        trade_data = []
+                        for trade in trades:
+                            trade_data.append([
+                                str(getattr(trade, 'datetime', '')),
+                                str(getattr(trade, 'symbol', '')),
+                                str(getattr(trade, 'direction', '')),
+                                str(getattr(trade, 'offset', '')),
+                                float(getattr(trade, 'price', 0)),
+                                int(getattr(trade, 'volume', 0))
+                            ])
+                        trades_df = pd.DataFrame(trade_data, columns=['时间', '品种', '方向', '开平', '价格', '数量'])
+                        trades_df.to_excel(writer, sheet_name='交易记录', index=False)
+                    except Exception as e:
+                        print(f"创建交易记录工作表失败: {e}")
+                
+                # 如果有每日结果，创建每日结果工作表
+                if daily_results and len(daily_results) > 0:
+                    try:
+                        daily_data = []
+                        for result in daily_results:
+                            daily_data.append([
+                                str(getattr(result, 'date', '')),
+                                float(getattr(result, 'balance', 0)),
+                                float(getattr(result, 'net_pnl', 0))
+                            ])
+                        daily_df = pd.DataFrame(daily_data, columns=['日期', '资产', '净盈亏'])
+                        daily_df.to_excel(writer, sheet_name='每日结果', index=False)
+                    except Exception as e:
+                        print(f"创建每日结果工作表失败: {e}")
+            
+            print(f"📋 Excel报告已成功创建: {excel_path}")
+            return excel_path
             
         except Exception as e:
-            print(f"保存Excel报告失败: {e}")
+            print(f"创建Excel报告失败: {e}")
+            return None
 
 
 if __name__ == "__main__":
@@ -496,4 +576,4 @@ if __name__ == "__main__":
     }
     
     print("测试结果分析器...")
-    analyzer._print_statistics(mock_stats) 
+    analyzer._print_statistics(pd.DataFrame(mock_stats)) 
