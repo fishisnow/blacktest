@@ -2,24 +2,24 @@
 回测配置管理器
 支持可配置的输出路径和数据库设置
 """
+import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, Optional
-import json
+from typing import Dict, Any
 
 
 @dataclass
 class BacktestConfig:
     """回测配置类"""
     # 输出路径配置
-    output_base_dir: str = "./backtest_results"
+    output_base_dir: str = "../../backtest_results"
     html_output_dir: str = "html"
     png_output_dir: str = "charts"
     excel_output_dir: str = "reports"
     
     # 数据库配置
-    results_db_path: str = "./backtest_results.db"
+    results_db_path: str = "../../backtest_results.db"
     
     # 回测参数
     symbol: str = ""

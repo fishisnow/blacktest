@@ -2,12 +2,13 @@
 回测结果数据库管理器
 支持存储和查询回测结果
 """
-import sqlite3
 import json
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-import pandas as pd
+import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
+from typing import List, Dict, Any
+
+import pandas as pd
 
 
 class BacktestResultsDB:

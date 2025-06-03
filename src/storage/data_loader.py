@@ -4,21 +4,19 @@
 使用抽象的数据提供器接口，支持 tushare、futu openapi 等多种数据源
 从.env文件读取配置以增强安全性
 """
-import pandas as pd
-import numpy as np
 import sqlite3
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List, Tuple
-from vnpy.trader.object import BarData, Interval, Exchange
-from vnpy.trader.constant import Interval as IntervalConstant
 
-# 导入新的抽象架构
-from config import config_manager, DataSource
-from data_provider_factory import data_provider_factory
-from base_data_provider import BaseDataProvider
-
+import pandas as pd
 from dotenv import load_dotenv
+from vnpy.trader.object import BarData, Interval, Exchange
+
+from src.data_provider.base_data_provider import BaseDataProvider
+# 导入新的抽象架构
+from src.conf.config import config_manager
+from src.data_provider.data_provider_factory import data_provider_factory
+
 load_dotenv()
 
 

@@ -2,34 +2,29 @@
 vnpy趋势跟踪策略回测系统
 支持上证50、沪深300、创业板指、上证指数、深证成指回测
 """
-import sys
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
-
-# vnpy 4.0 新的导入路径
-from vnpy_ctastrategy.backtesting import BacktestingEngine
-from vnpy_ctastrategy.base import EngineType
+from datetime import datetime
 
 from vnpy.trader.object import Interval
-from vnpy.trader.constant import Exchange
-from strategies.trend_following_strategy import TrendFollowingStrategy
-from data_loader import DataLoader
+from vnpy_ctastrategy.backtesting import BacktestingEngine
+
+from src.conf.backtest_config import BacktestConfig
+from src.storage.data_loader import DataLoader
+from src.storage.database_manager import BacktestResultsDB
 from result_analyzer import ResultAnalyzer
-from backtest_config import BacktestConfig
-from database_manager import BacktestResultsDB
+
+INITIAL_CAPITAL = 1_000_000
 
 
 class BacktestRunner:
     def __init__(self, config: BacktestConfig = None):
         self.engine = BacktestingEngine()
         self.data_loader = DataLoader()
-        
+
         # 使用配置化的分析器和数据库管理器
         self.config = config
         self.db_manager = BacktestResultsDB(config.results_db_path) if config else None
         self.analyzer = ResultAnalyzer(config, self.db_manager)
-        
+
         self.data_loaded = False
 
     def _convert_to_vt_symbol(self, symbol: str) -> str:
@@ -56,7 +51,7 @@ class BacktestRunner:
             slippage=0.0001,  # 滑点
             size=1,  # 合约乘数
             pricetick=0.01,  # 最小价格变动
-            capital=1000000,  # 初始资金
+            capital=INITIAL_CAPITAL,  # 初始资金
         )
 
     def add_strategy(self, strategy_class, setting: dict):
@@ -112,62 +107,3 @@ class BacktestRunner:
 
         # 分析和可视化结果
         self.analyzer.analyze_results(stats, trades, daily_results)
-
-
-def main():
-    """主函数"""
-    print("vnpy趋势跟踪策略回测系统")
-    print("=" * 50)
-
-    # 定义回测参数
-    indexes = {
-        "688981.SH": "中芯国际"
-    }
-
-    start_date = datetime(2020, 1, 1)
-    end_date = datetime(2025, 1, 1)
-
-    # 策略参数
-    strategy_setting = {
-        "fast_ma_length": 10,
-        "slow_ma_length": 30,
-        "atr_length": 14,
-        "atr_multiplier": 2.0,
-        "fixed_size": 1
-    }
-
-    for symbol, name in indexes.items():
-        print(f"\n开始回测 {name} ({symbol})")
-        print("-" * 30)
-
-        # 创建配置
-        config = BacktestConfig(
-            output_base_dir="./backtest_results",
-            symbol=symbol,
-            strategy_name="TrendFollowingStrategy",
-            start_date=start_date.strftime("%Y-%m-%d"),
-            end_date=end_date.strftime("%Y-%m-%d"),
-            strategy_params=strategy_setting
-        )
-
-        runner = BacktestRunner(config)
-
-        # 设置回测引擎
-        runner.setup_engine(symbol, start_date, end_date)
-
-        # 添加策略
-        runner.add_strategy(TrendFollowingStrategy, strategy_setting)
-
-        # 加载数据
-        if runner.load_data(symbol, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")):
-            # 运行回测
-            runner.run_backtest()
-
-            # 显示结果
-            runner.show_results()
-        else:
-            print(f"无法加载 {name} 数据，跳过回测")
-
-
-if __name__ == "__main__":
-    main()

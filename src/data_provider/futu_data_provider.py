@@ -7,9 +7,9 @@ from typing import Optional, List, Dict, Any
 from futu import *
 from vnpy.trader.object import BarData, Interval
 
-from base_data_provider import BaseDataProvider
-from config import DataSource
-from symbols import get_symbols_by_market, get_symbol_info
+from src.data_provider.base_data_provider import BaseDataProvider
+from src.conf.config import DataSource
+from src.symbol.symbols import get_symbols_by_market, get_symbol_info
 
 
 class FutuDataProvider(BaseDataProvider):

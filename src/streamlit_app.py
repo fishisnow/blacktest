@@ -2,27 +2,22 @@
 vnpy趋势跟踪策略回测系统 - Streamlit版本
 集成股票选择、参数设置、回测执行和结果展示
 """
-import streamlit as st
+import time
+import traceback
+from datetime import datetime
+
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-import numpy as np
-import json
-import os
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-import sqlite3
-from contextlib import contextmanager
-import threading
-import traceback
-import time
 
+from src.conf.backtest_config import BacktestConfig
+from src.blacktest_runner import BacktestRunner, INITIAL_CAPITAL
+from src.storage.database_manager import BacktestResultsDB
+from src.strategies.trend_following_strategy import TrendFollowingStrategy
 # 导入回测相关模块
-from symbols import get_all_symbols, get_symbols_by_market, get_symbols_by_type
-from database_manager import BacktestResultsDB
-from backtest_config import BacktestConfig
-from main import BacktestRunner
-from strategies.trend_following_strategy import TrendFollowingStrategy
+from src.symbol.symbols import get_all_symbols, get_symbols_by_market
 
 # 页面配置
 st.set_page_config(
@@ -46,7 +41,7 @@ class BacktestExecutor:
     """回测执行器"""
     
     def __init__(self):
-        self.db_manager = BacktestResultsDB('./backtest_results.db')
+        self.db_manager = BacktestResultsDB('../backtest_results.db')
     
     def run_backtest_async(self, symbol: str, strategy_params: dict, date_range: tuple):
         """异步执行回测"""
@@ -67,7 +62,7 @@ class BacktestExecutor:
             
             # 创建配置
             config = BacktestConfig(
-                output_base_dir="./backtest_results",
+                output_base_dir="../backtest_results",
                 symbol=symbol,
                 strategy_name="TrendFollowingStrategy",
                 start_date=start_date.strftime("%Y-%m-%d"),
@@ -119,12 +114,20 @@ class BacktestExecutor:
                     serializable_trades.append(trade_dict)
                 
                 serializable_daily_results = []
+                cumulative_pnl = 0
+                
                 for result in daily_results:
+                    # 累积总盈亏
+                    cumulative_pnl += getattr(result, 'net_pnl', 0)
+                    # 计算账户余额 = 初始资金 + 累积盈亏
+                    balance = INITIAL_CAPITAL + cumulative_pnl
+                    
                     result_dict = {
                         'date': str(getattr(result, 'date', '')),
-                        'balance': float(getattr(result, 'balance', 0)),
+                        'balance': float(balance),  # ✅ 使用计算出的余额
                         'net_pnl': float(getattr(result, 'net_pnl', 0)),
-                        'pnl': float(getattr(result, 'pnl', 0))
+                        'pnl': float(getattr(result, 'pnl', 0)),
+                        'total_pnl': float(getattr(result, 'total_pnl', cumulative_pnl))  # 可选：添加总盈亏字段
                     }
                     serializable_daily_results.append(result_dict)
                 
@@ -328,7 +331,7 @@ def show_backtest_interface():
         with col2:
             if st.button("🔄 刷新股票列表"):
                 try:
-                    from symbols import reload_symbols
+                    from src.symbol.symbols import reload_symbols
                     reload_symbols()
                     st.success("股票列表已刷新")
                     st.rerun()
@@ -585,7 +588,7 @@ def show_historical_results():
     st.header("📚 历史回测结果")
     
     try:
-        db = BacktestResultsDB('./backtest_results.db')
+        db = BacktestResultsDB('../backtest_results.db')
         runs_df = db.get_all_runs()
         
         if runs_df.empty:

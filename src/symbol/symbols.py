@@ -3,8 +3,8 @@
 从symbol文件夹中的CSV文件加载股票代码到内存中
 """
 import os
-import csv
-from typing import Dict, List, Tuple
+from typing import Dict
+
 from vnpy.trader.object import Exchange
 
 
