@@ -131,7 +131,7 @@ class BacktestResultsDB:
                 )
             """)
             
-            # 每日结果表
+            # 每日结果表 - 添加唯一约束防止重复数据
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_daily_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,6 +143,7 @@ class BacktestResultsDB:
                     net_pnl REAL NOT NULL,
                     commission REAL NOT NULL,
                     position REAL DEFAULT 0,
+                    UNIQUE(run_id, date),
                     FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)
                 )
             """)

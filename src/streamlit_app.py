@@ -74,6 +74,65 @@ def convert_trade_fields(trade_dict):
     
     return direction, offset
 
+def calculate_consistent_daily_metrics(daily_results_raw):
+    """统一的每日指标计算函数，确保实际测试和历史结果使用相同逻辑"""
+    
+    processed_results = []
+    cumulative_pnl = 0
+    win_count = 0  # 盈利天数
+    loss_count = 0  # 亏损天数
+    
+    # 处理数据源差异
+    for i, result in enumerate(daily_results_raw):
+        # 统一获取net_pnl，处理对象和字典两种格式
+        if isinstance(result, dict):
+            net_pnl = result.get('net_pnl', 0)
+            pnl = result.get('pnl', 0)
+            date = result.get('date', '')
+        else:
+            net_pnl = getattr(result, 'net_pnl', 0)
+            pnl = getattr(result, 'pnl', 0)
+            date = str(getattr(result, 'date', ''))
+        
+        # 确保数值类型正确
+        net_pnl = float(net_pnl) if net_pnl is not None else 0.0
+        pnl = float(pnl) if pnl is not None else 0.0
+        
+        # 累积总盈亏
+        cumulative_pnl += net_pnl
+        
+        # 统计盈亏天数（设置阈值避免浮点数精度问题）
+        if net_pnl > 0.01:  # 盈利阈值
+            win_count += 1
+        elif net_pnl < -0.01:  # 亏损阈值
+            loss_count += 1
+        # 在阈值范围内(-0.01 到 0.01)视为平盘，不计入盈亏天数
+        
+        # 计算盈亏比（避免除零错误）
+        if loss_count > 0:
+            win_loss_ratio = win_count / loss_count
+        else:
+            win_loss_ratio = float(win_count) if win_count > 0 else 0.0
+        
+        # 计算收益率（相对于初始资金）
+        return_ratio = (cumulative_pnl / INITIAL_CAPITAL) * 100
+        
+        # 转换为标准格式
+        result_dict = {
+            'date': date,
+            'net_pnl': net_pnl,
+            'pnl': pnl,
+            'total_pnl': cumulative_pnl,
+            'return_ratio': return_ratio,
+            'win_count': win_count,
+            'loss_count': loss_count,
+            'win_loss_ratio': win_loss_ratio
+        }
+        
+        processed_results.append(result_dict)
+    
+    return processed_results
+
 class BacktestExecutor:
     """回测执行器"""
     
@@ -133,10 +192,12 @@ class BacktestExecutor:
                 trades = runner.engine.get_all_trades()
                 daily_results = runner.engine.get_all_daily_results()
                 
-                # 保存结果 - 先调用show_results保存基本配置信息
-                runner.show_results()
+                # 🔧 修复重复保存问题：只调用一次完整的结果保存
+                # 保存配置到数据库（但不重复保存结果数据）
+                if runner.db_manager and runner.config:
+                    runner.db_manager.save_backtest_run(runner.config)
                 
-                # 然后进行详细分析（这会保存完整的回测结果）
+                # 进行完整的结果分析和保存（只调用一次）
                 runner.analyzer.analyze_results(stats, trades, daily_results)
                 
                 # 转换为可序列化的格式
@@ -153,42 +214,8 @@ class BacktestExecutor:
                     }
                     serializable_trades.append(trade_dict)
                 
-                serializable_daily_results = []
-                cumulative_pnl = 0
-                win_count = 0  # 盈利天数
-                loss_count = 0  # 亏损天数
-                
-                for result in daily_results:
-                    # 累积总盈亏
-                    net_pnl = getattr(result, 'net_pnl', 0)
-                    cumulative_pnl += net_pnl
-                    
-                    # 统计盈亏天数
-                    if net_pnl > 0:
-                        win_count += 1
-                    elif net_pnl < 0:
-                        loss_count += 1
-                    
-                    # 计算盈亏比（避免除零错误）
-                    if loss_count > 0:
-                        win_loss_ratio = win_count / loss_count
-                    else:
-                        win_loss_ratio = win_count if win_count > 0 else 0
-                    
-                    # 计算收益率（相对于初始资金）
-                    return_ratio = (cumulative_pnl / INITIAL_CAPITAL) * 100 if INITIAL_CAPITAL > 0 else 0
-                    
-                    result_dict = {
-                        'date': str(getattr(result, 'date', '')),
-                        'net_pnl': float(getattr(result, 'net_pnl', 0)),
-                        'pnl': float(getattr(result, 'pnl', 0)),
-                        'total_pnl': float(cumulative_pnl),  # 累积总盈亏
-                        'return_ratio': float(return_ratio),  # 收益率（%）
-                        'win_count': int(win_count),  # 盈利天数
-                        'loss_count': int(loss_count),  # 亏损天数
-                        'win_loss_ratio': float(win_loss_ratio)  # 盈利天数/亏损天数比
-                    }
-                    serializable_daily_results.append(result_dict)
+                # 使用统一的计算函数处理每日结果
+                serializable_daily_results = calculate_consistent_daily_metrics(daily_results)
                 
                 st.session_state.backtest_progress = 100
                 st.session_state.backtest_results = {
@@ -1074,20 +1101,99 @@ def show_historical_results():
                         st.write(f"**最大回撤:** {max_drawdown:.2f}%")
                         st.write(f"**夏普比率:** {sharpe_ratio:.2f}")
                     
-                    # 性能图表
-                    daily_results = details.get('daily_results', [])
-                    if not daily_results or len(daily_results) == 0:
+                    # 性能图表 - 修复：将数据库数据转换为与实际测试结果相同的格式
+                    raw_daily_results = details.get('daily_results', [])
+                    if not raw_daily_results or len(raw_daily_results) == 0:
                         st.warning("没有可用的每日结果数据")
                     else:
-                        # 修复：检查是否为列表而不是DataFrame
-                        if isinstance(daily_results, list):
-                            fig = create_performance_chart(daily_results)
+                        # 🔧 修复重复数据问题：按日期去重，确保每个日期只有一条记录
+                        seen_dates = set()
+                        deduplicated_results = []
+                        
+                        for result in raw_daily_results:
+                            date_key = result.get('date', '')
+                            if date_key not in seen_dates:
+                                seen_dates.add(date_key)
+                                deduplicated_results.append(result)
+                        
+                        # 使用去重后的数据进行计算
+                        processed_daily_results = calculate_consistent_daily_metrics(deduplicated_results)
+                        
+                        # 调用create_performance_chart来渲染图表
+                        if processed_daily_results:
+                            st.subheader("📈 性能图表")
+                            fig = create_performance_chart(processed_daily_results)
                             st.plotly_chart(fig, use_container_width=True)
-                        elif hasattr(daily_results, 'empty') and daily_results.empty:
-                            st.warning("每日结果数据为空")
+                            
+                            # 显示关键指标 - 使用与实际测试结果相同的逻辑
+                            st.subheader("📊 策略指标")
+                            if processed_daily_results:
+                                # 计算策略综合指标
+                                final_data = processed_daily_results[-1]
+                                final_return_ratio = final_data.get('return_ratio', 0)
+                                total_pnl = final_data.get('total_pnl', 0)
+                                final_win_loss_ratio = final_data.get('win_loss_ratio', 0)
+                                
+                                # 计算最大回撤
+                                cumulative_assets = [INITIAL_CAPITAL + d.get('total_pnl', 0) for d in processed_daily_results]
+                                cumulative_max = []
+                                current_max = cumulative_assets[0]
+                                for asset in cumulative_assets:
+                                    if asset > current_max:
+                                        current_max = asset
+                                    cumulative_max.append(current_max)
+                                
+                                drawdowns = [(asset - max_val) / max_val for asset, max_val in zip(cumulative_assets, cumulative_max)]
+                                max_drawdown = min(drawdowns) * 100 if drawdowns else 0
+                                
+                                # 计算年化指标
+                                daily_returns = []
+                                for i in range(1, len(processed_daily_results)):
+                                    prev_pnl = processed_daily_results[i-1].get('total_pnl', 0)
+                                    curr_pnl = processed_daily_results[i].get('total_pnl', 0)
+                                    daily_return = (curr_pnl - prev_pnl) / INITIAL_CAPITAL
+                                    daily_returns.append(daily_return)
+                                
+                                if daily_returns:
+                                    avg_daily_return = sum(daily_returns) / len(daily_returns)
+                                    std_daily_return = (sum([(r - avg_daily_return) ** 2 for r in daily_returns]) / len(daily_returns)) ** 0.5
+                                    
+                                    annual_return = avg_daily_return * 252 * 100
+                                    annual_volatility = std_daily_return * (252 ** 0.5) * 100
+                                    sharpe_ratio = (avg_daily_return * 252) / (std_daily_return * (252 ** 0.5)) if std_daily_return > 0 else 0
+                                else:
+                                    annual_return = 0
+                                    annual_volatility = 0
+                                    sharpe_ratio = 0
+                                
+                                # 获取交易统计
+                                trades_data = details.get('trades', [])
+                                total_trades = len(trades_data)
+                                winning_trades = len([t for t in trades_data if t.get('pnl', 0) > 0])
+                                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                                
+                                # 显示关键指标
+                                metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
+                                
+                                with metric_col1:
+                                    st.metric("策略收益率", f"{final_return_ratio:.2f}%")
+                                
+                                with metric_col2:
+                                    st.metric("年化收益率", f"{annual_return:.2f}%")
+                                
+                                with metric_col3:
+                                    st.metric("总盈亏", f"{total_pnl:,.0f}")
+                                
+                                with metric_col4:
+                                    st.metric("最大回撤", f"{max_drawdown:.2f}%")
+                                
+                                with metric_col5:
+                                    st.metric("夏普比率", f"{sharpe_ratio:.2f}")
+                                
+                                with metric_col6:
+                                    st.metric("胜率", f"{win_rate:.1f}%")
                         else:
-                            fig = create_performance_chart(daily_results)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.warning("数据处理失败，无法生成图表")
                     
     except Exception as e:
         st.error(f"加载历史数据失败: {e}")
