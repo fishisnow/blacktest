@@ -647,7 +647,20 @@ def show_backtest_interface():
             atr_multiplier = st.slider("ATR倍数", 1.0, 4.0, 2.0, 0.1, help="止损和止盈的ATR倍数")
         
         with col3:
-            fixed_size = st.number_input("固定交易手数", 1, 10, 1, help="每次交易的固定手数")
+            # 资金管理模块
+            st.markdown("**💰 资金管理**")
+            position_mode = st.selectbox(
+                "仓位模式",
+                options=["固定手数", "1/4仓", "1/2仓", "全仓"],
+                index=0,
+                help="选择每次交易的仓位大小"
+            )
+            
+            # 只有在固定手数模式下才显示手数设置
+            if position_mode == "固定手数":
+                fixed_size = st.number_input("固定交易手数", 1, 10, 1, help="每次交易的固定手数")
+            else:
+                fixed_size = 1  # 其他模式下的默认值，实际不会使用
         
         # 策略参数
         strategy_params = {
@@ -655,7 +668,8 @@ def show_backtest_interface():
             "slow_ma_length": slow_ma,
             "atr_length": atr_length,
             "atr_multiplier": atr_multiplier,
-            "fixed_size": fixed_size
+            "fixed_size": fixed_size,
+            "position_mode": position_mode
         }
         
         # 显示参数摘要
@@ -672,7 +686,11 @@ def show_backtest_interface():
             st.write(f"时间: {start_date} 至 {end_date}")
             st.write(f"ATR: {atr_length}期 {atr_multiplier}倍")
         with param_col3:
-            st.write(f"交易手数: {fixed_size}")
+            st.write(f"资金管理: {position_mode}")
+            if position_mode == "固定手数":
+                st.write(f"交易手数: {fixed_size}")
+            else:
+                st.write(f"仓位比例: {position_mode}")
             days = (end_date - start_date).days
             st.write(f"回测天数: {days}天")
         
@@ -932,26 +950,76 @@ def show_backtest_interface():
             if results['trades'] and len(results['trades']) > 0:
                 st.subheader("📝 交易记录")
                 
-                # 转换交易记录为DataFrame并优化字段显示
-                trades_data = []
-                for trade in results['trades']:
-                    # 转换方向和开平字段
-                    direction, offset = convert_trade_fields(trade)
+                # 计算交易配对和盈亏
+                def calculate_trade_pnl(trades_list):
+                    """计算交易记录的配对盈亏"""
+                    enhanced_trades = []
+                    positions = {}  # 跟踪每个symbol的持仓 {symbol: [(entry_price, volume, datetime), ...]}
                     
-                    # 格式化时间显示
-                    datetime_str = trade['datetime']
-                    if len(datetime_str) > 19:  # 如果包含毫秒
-                        datetime_str = datetime_str[:19]
+                    for trade in trades_list:
+                        symbol = trade['symbol']
+                        direction = trade['direction']
+                        offset = trade['offset']
+                        price = trade['price']
+                        volume = trade['volume']
+                        datetime_str = trade['datetime']
+                        
+                        trade_pnl = 0.0  # 默认单笔交易盈亏为0
+                        
+                        # 初始化该symbol的持仓记录
+                        if symbol not in positions:
+                            positions[symbol] = []
+                        
+                        # 判断是开仓还是平仓
+                        is_open = 'OPEN' in str(offset).upper() or '开仓' in str(offset)
+                        is_close = 'CLOSE' in str(offset).upper() or '平仓' in str(offset)
+                        is_long = 'LONG' in str(direction).upper() or '做多' in str(direction)
+                        
+                        if is_open:
+                            # 开仓：记录持仓信息
+                            positions[symbol].append({
+                                'entry_price': price,
+                                'volume': volume,
+                                'datetime': datetime_str,
+                                'direction': direction
+                            })
+                        elif is_close and positions[symbol]:
+                            # 平仓：计算盈亏
+                            if positions[symbol]:
+                                # 使用FIFO（先进先出）匹配
+                                entry = positions[symbol].pop(0)
+                                entry_price = entry['entry_price']
+                                entry_direction = entry['direction']
+                                
+                                # 根据方向计算盈亏
+                                if 'LONG' in str(entry_direction).upper() or '做多' in str(entry_direction):
+                                    # 多头平仓：(平仓价 - 开仓价) * 数量
+                                    trade_pnl = (price - entry_price) * volume
+                                else:
+                                    # 空头平仓：(开仓价 - 平仓价) * 数量
+                                    trade_pnl = (entry_price - price) * volume
+                        
+                        # 转换方向和开平字段
+                        direction, offset = convert_trade_fields(trade)
+                        
+                        # 格式化时间显示
+                        if len(datetime_str) > 19:  # 如果包含毫秒
+                            datetime_str = datetime_str[:19]
+                        
+                        enhanced_trades.append({
+                            '时间': datetime_str,
+                            '股票': symbol,
+                            '方向': direction,
+                            '开平': offset,
+                            '价格': f"{price:.2f}",
+                            '数量': int(volume),
+                            '盈亏': f"{trade_pnl:.2f}"
+                        })
                     
-                    trades_data.append({
-                        '时间': datetime_str,
-                        '股票': trade['symbol'],
-                        '方向': direction,
-                        '开平': offset,
-                        '价格': f"{trade['price']:.2f}",
-                        '数量': int(trade['volume']),
-                        '盈亏': f"{trade['pnl']:.2f}"
-                    })
+                    return enhanced_trades
+                
+                # 计算增强的交易记录
+                trades_data = calculate_trade_pnl(results['trades'])
                 
                 if trades_data:
                     trades_df = pd.DataFrame(trades_data)
@@ -1013,14 +1081,35 @@ def show_backtest_interface():
                         open_trades = len([t for t in results['trades'] if '开仓' in convert_trade_fields(t)[1]])
                         close_trades = len([t for t in results['trades'] if '平仓' in convert_trade_fields(t)[1]])
                         
+                        # 计算盈亏统计
+                        pnl_values = []
+                        for trade_data in trades_data:
+                            pnl_str = trade_data['盈亏']
+                            try:
+                                pnl_value = float(pnl_str)
+                                if pnl_value != 0:  # 只统计非零的盈亏（即平仓交易）
+                                    pnl_values.append(pnl_value)
+                            except:
+                                pass
+                        
+                        profit_trades = len([p for p in pnl_values if p > 0])
+                        loss_trades = len([p for p in pnl_values if p < 0])
+                        total_pnl = sum(pnl_values) if pnl_values else 0
+                        
                         with col1:
                             st.metric("做多交易", long_trades)
+                            st.metric("盈利交易", profit_trades)
                         with col2:
                             st.metric("做空交易", short_trades)
+                            st.metric("亏损交易", loss_trades)
                         with col3:
                             st.metric("开仓交易", open_trades)
+                            st.metric("总盈亏", f"{total_pnl:,.0f}元")
                         with col4:
                             st.metric("平仓交易", close_trades)
+                            if profit_trades + loss_trades > 0:
+                                trade_win_rate = (profit_trades / (profit_trades + loss_trades)) * 100
+                                st.metric("交易胜率", f"{trade_win_rate:.1f}%")
 
 def show_historical_results():
     """显示历史回测结果"""

@@ -53,7 +53,7 @@ class BacktestRunner:
             end=end_date,
             rate=0.0003,  # 手续费率
             slippage=0.0001,  # 滑点
-            size=1,  # 合约乘数
+            size=100,  # 合约乘数 - 中国股票1手=100股
             pricetick=0.01,  # 最小价格变动
             capital=INITIAL_CAPITAL,  # 初始资金
         )
