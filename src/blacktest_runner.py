@@ -9,7 +9,6 @@ from vnpy_ctastrategy.backtesting import BacktestingEngine
 
 from src.conf.backtest_config import BacktestConfig
 from src.storage.data_loader import DataLoader
-from src.storage.database_manager import BacktestResultsDB
 from src.storage.db_utils import get_db_manager, init_database
 from result_analyzer import ResultAnalyzer
 

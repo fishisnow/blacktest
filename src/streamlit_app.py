@@ -506,7 +506,6 @@ def create_performance_chart(daily_results) -> go.Figure:
 
 def show_backtest_interface():
     """显示回测界面"""
-    st.header("📈 vnpy趋势跟踪策略回测系统")
     
     # 加载股票代码
     try:
@@ -578,55 +577,49 @@ def show_backtest_interface():
     if selected_symbol:
         st.session_state.current_symbol = selected_symbol
         
-        # 显示选中的股票信息
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            symbol_info = all_symbols.get(selected_symbol)
-            if symbol_info:
-                st.info(f"已选择: {selected_symbol} - {symbol_info['name']} ({symbol_info['market']}市场 {symbol_info['type']})")
-            else:
-                st.info(f"已选择: {selected_symbol}")
-        
-        with col2:
-            if st.button("🔄 刷新股票列表"):
-                try:
-                    from src.symbol.symbols import reload_symbols
-                    reload_symbols()
-                    st.success("股票列表已刷新")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"刷新失败: {e}")
-        
         # 回测参数设置
         st.subheader("⚙️ 回测参数设置")
         
-        col1, col2 = st.columns(2)
+        # 时间范围设置 - 改为独立区域，默认最近两年
+        st.markdown("**📅 时间范围**")
+        from datetime import datetime, timedelta
+        default_start_date = datetime.now() - timedelta(days=730)  # 两年前
         
+        col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**📅 时间范围**")
             start_date = st.date_input(
                 "开始日期",
-                value=datetime(2023, 1, 1),
+                value=default_start_date,
                 min_value=datetime(2020, 1, 1),
                 max_value=datetime.now()
             )
+        with col2:
             end_date = st.date_input(
                 "结束日期", 
                 value=datetime.now(),
                 min_value=start_date,
                 max_value=datetime.now()
             )
-            
-            # 验证日期范围
-            if start_date >= end_date:
-                st.error("开始日期必须小于结束日期")
         
-        with col2:
-            st.markdown("**📊 策略参数**")
+        # 验证日期范围
+        if start_date >= end_date:
+            st.error("开始日期必须小于结束日期")
+        
+        st.markdown("---")
+        
+        # 策略参数设置 - 改为独立区域
+        st.markdown("**📊 策略参数**")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
             fast_ma = st.slider("快速均线周期", 5, 20, 10, help="用于生成交易信号的短期均线")
             slow_ma = st.slider("慢速均线周期", 20, 60, 30, help="用于确定趋势方向的长期均线")
+        
+        with col2:
             atr_length = st.slider("ATR周期", 10, 30, 14, help="计算真实波幅的周期")
             atr_multiplier = st.slider("ATR倍数", 1.0, 4.0, 2.0, 0.1, help="止损和止盈的ATR倍数")
+        
+        with col3:
             fixed_size = st.number_input("固定交易手数", 1, 10, 1, help="每次交易的固定手数")
         
         # 策略参数
@@ -642,7 +635,11 @@ def show_backtest_interface():
         st.markdown("**📋 参数摘要**")
         param_col1, param_col2, param_col3 = st.columns(3)
         with param_col1:
-            st.write(f"股票: {selected_symbol}")
+            symbol_info = all_symbols.get(selected_symbol)
+            if symbol_info:
+                st.write(f"股票: {selected_symbol} - {symbol_info['name']}")
+            else:
+                st.write(f"股票: {selected_symbol}")
             st.write(f"快/慢均线: {fast_ma}/{slow_ma}")
         with param_col2:
             st.write(f"时间: {start_date} 至 {end_date}")
