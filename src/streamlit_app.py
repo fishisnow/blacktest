@@ -5,6 +5,7 @@ vnpy趋势跟踪策略回测系统 - Streamlit版本
 import time
 import traceback
 from datetime import datetime
+from typing import List, Dict
 
 import numpy as np
 import pandas as pd
@@ -13,13 +14,14 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from src.conf.backtest_config import BacktestConfig
-from src.blacktest_runner import BacktestRunner, INITIAL_CAPITAL
-from src.storage.database_manager import BacktestResultsDB
+from src.blacktest_runner import BacktestRunner
 from src.storage.db_utils import get_db_manager
 from src.strategies.trend_following_strategy import TrendFollowingStrategy
 # 导入回测相关模块
 from src.symbol.symbols import get_all_symbols, get_symbols_by_market
 from src.storage.data_loader import DataLoader
+from src.utils.statistics_calculator import StatisticsCalculator
+from src.constants import INITIAL_CAPITAL
 
 # 页面配置
 st.set_page_config(
@@ -76,62 +78,8 @@ def convert_trade_fields(trade_dict):
 
 def calculate_consistent_daily_metrics(daily_results_raw):
     """统一的每日指标计算函数，确保实际测试和历史结果使用相同逻辑"""
-    
-    processed_results = []
-    cumulative_pnl = 0
-    win_count = 0  # 盈利天数
-    loss_count = 0  # 亏损天数
-    
-    # 处理数据源差异
-    for i, result in enumerate(daily_results_raw):
-        # 统一获取net_pnl，处理对象和字典两种格式
-        if isinstance(result, dict):
-            net_pnl = result.get('net_pnl', 0)
-            pnl = result.get('pnl', 0)
-            date = result.get('date', '')
-        else:
-            net_pnl = getattr(result, 'net_pnl', 0)
-            pnl = getattr(result, 'pnl', 0)
-            date = str(getattr(result, 'date', ''))
-        
-        # 确保数值类型正确
-        net_pnl = float(net_pnl) if net_pnl is not None else 0.0
-        pnl = float(pnl) if pnl is not None else 0.0
-        
-        # 累积总盈亏
-        cumulative_pnl += net_pnl
-        
-        # 统计盈亏天数（设置阈值避免浮点数精度问题）
-        if net_pnl > 0.01:  # 盈利阈值
-            win_count += 1
-        elif net_pnl < -0.01:  # 亏损阈值
-            loss_count += 1
-        # 在阈值范围内(-0.01 到 0.01)视为平盘，不计入盈亏天数
-        
-        # 计算盈亏比（避免除零错误）
-        if loss_count > 0:
-            win_loss_ratio = win_count / loss_count
-        else:
-            win_loss_ratio = float(win_count) if win_count > 0 else 0.0
-        
-        # 计算收益率（相对于初始资金）
-        return_ratio = (cumulative_pnl / INITIAL_CAPITAL) * 100
-        
-        # 转换为标准格式
-        result_dict = {
-            'date': date,
-            'net_pnl': net_pnl,
-            'pnl': pnl,
-            'total_pnl': cumulative_pnl,
-            'return_ratio': return_ratio,
-            'win_count': win_count,
-            'loss_count': loss_count,
-            'win_loss_ratio': win_loss_ratio
-        }
-        
-        processed_results.append(result_dict)
-    
-    return processed_results
+    # 直接使用统一的统计计算器的内部方法，确保逻辑一致
+    return StatisticsCalculator._process_daily_results(daily_results_raw, INITIAL_CAPITAL)
 
 class BacktestExecutor:
     """回测执行器"""
@@ -219,6 +167,7 @@ class BacktestExecutor:
                 
                 st.session_state.backtest_progress = 100
                 st.session_state.backtest_results = {
+                    'run_id': runner.config.run_id,  # 添加run_id用于从数据库获取统计指标
                     'stats': stats,
                     'trades': serializable_trades,
                     'daily_results': serializable_daily_results,
@@ -610,7 +559,7 @@ def show_backtest_interface():
         # 时间范围设置 - 改为独立区域，默认最近两年
         st.markdown("**📅 时间范围**")
         from datetime import datetime, timedelta
-        default_start_date = datetime.now() - timedelta(days=730)  # 两年前
+        default_start_date = datetime.now() - timedelta(days=1095)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -773,84 +722,25 @@ def show_backtest_interface():
             
             results = st.session_state.backtest_results
             
-            # 关键指标 - 从daily_results计算得出，而不是从stats获取
+            # 关键指标 - 直接从数据库获取统计指标
             metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
             
-            # 计算策略综合指标
-            strategy_metrics = {}
-            if results['daily_results'] and len(results['daily_results']) > 0:
-                daily_data = results['daily_results']
-                
-                # 基础数据
-                final_return_ratio = daily_data[-1].get('return_ratio', 0)
-                total_pnl = daily_data[-1].get('total_pnl', 0)
-                final_win_loss_ratio = daily_data[-1].get('win_loss_ratio', 0)
-                
-                # 计算最大回撤
-                cumulative_assets = [INITIAL_CAPITAL + d.get('total_pnl', 0) for d in daily_data]
-                cumulative_max = []
-                current_max = cumulative_assets[0]
-                for asset in cumulative_assets:
-                    if asset > current_max:
-                        current_max = asset
-                    cumulative_max.append(current_max)
-                
-                drawdowns = [(asset - max_val) / max_val for asset, max_val in zip(cumulative_assets, cumulative_max)]
-                max_drawdown = min(drawdowns) * 100 if drawdowns else 0
-                
-                # 计算日收益率统计
-                daily_returns = []
-                for i in range(1, len(daily_data)):
-                    prev_pnl = daily_data[i-1].get('total_pnl', 0)
-                    curr_pnl = daily_data[i].get('total_pnl', 0)
-                    daily_return = (curr_pnl - prev_pnl) / INITIAL_CAPITAL
-                    daily_returns.append(daily_return)
-                
-                # 计算年化指标（假设252个交易日）
-                if daily_returns:
-                    avg_daily_return = sum(daily_returns) / len(daily_returns)
-                    std_daily_return = (sum([(r - avg_daily_return) ** 2 for r in daily_returns]) / len(daily_returns)) ** 0.5
-                    
-                    annual_return = avg_daily_return * 252 * 100
-                    annual_volatility = std_daily_return * (252 ** 0.5) * 100
-                    sharpe_ratio = (avg_daily_return * 252) / (std_daily_return * (252 ** 0.5)) if std_daily_return > 0 else 0
-                else:
-                    annual_return = 0
-                    annual_volatility = 0
-                    sharpe_ratio = 0
-                
-                # 计算交易统计
-                total_trades = len(results['trades']) if results['trades'] else 0
-                winning_trades = len([t for t in results['trades'] if t.get('pnl', 0) > 0]) if results['trades'] else 0
-                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-                
-                strategy_metrics = {
-                    'final_return_ratio': final_return_ratio,
-                    'total_pnl': total_pnl,
-                    'max_drawdown': max_drawdown,
-                    'final_win_loss_ratio': final_win_loss_ratio,
-                    'total_trades': total_trades,
-                    'win_rate': win_rate,
-                    'annual_return': annual_return,
-                    'annual_volatility': annual_volatility,
-                    'sharpe_ratio': sharpe_ratio
-                }
+            # 从数据库获取统计指标
+            run_id = results.get('run_id')
+            if run_id:
+                # 从数据库获取已计算的统计指标
+                strategy_metrics = get_run_statistics(
+                    run_id=run_id,
+                    daily_results=results['daily_results']  # 用于计算final_win_loss_ratio
+                )
             else:
-                # 如果没有daily_results数据，使用默认值
-                strategy_metrics = {
-                    'final_return_ratio': 0,
-                    'total_pnl': 0,
-                    'max_drawdown': 0,
-                    'final_win_loss_ratio': 0,
-                    'total_trades': 0,
-                    'win_rate': 0,
-                    'annual_return': 0,
-                    'annual_volatility': 0,
-                    'sharpe_ratio': 0
-                }
+                # 没有run_id的情况，记录错误
+                st.error("❌ 回测结果缺少run_id，无法获取统计指标")
+                print("❌ 错误：回测结果中没有run_id字段")
+                strategy_metrics = StatisticsCalculator._get_default_stats()
             
             with metric_col1:
-                st.metric("策略收益率", f"{strategy_metrics['final_return_ratio']:.2f}%")
+                st.metric("策略收益率", f"{strategy_metrics['total_return']:.2f}%")
             
             with metric_col2:
                 st.metric("年化收益率", f"{strategy_metrics['annual_return']:.2f}%")
@@ -902,7 +792,7 @@ def show_backtest_interface():
             try:
                 # 构建策略指标展示数据
                 important_metrics = {
-                    '策略收益率': (strategy_metrics['final_return_ratio'], '策略期间的总体收益表现'),
+                    '策略收益率': (strategy_metrics['total_return'], '策略期间的总体收益表现'),
                     '年化收益率': (strategy_metrics['annual_return'], '将策略收益换算为年化表现'),
                     '年化波动率': (strategy_metrics['annual_volatility'], '策略收益的年化标准差'),
                     '夏普比率': (strategy_metrics['sharpe_ratio'], '风险调整后的收益指标，越高越好'),
@@ -1136,12 +1026,61 @@ def show_historical_results():
             if col not in runs_df.columns:
                 runs_df[col] = 0 if col in ['total_return', 'max_drawdown', 'sharpe_ratio', 'win_rate', 'total_trades'] else ''
         
-        # 显示数据表格，对数值列进行四舍五入
+        # 显示数据表格，对数值列进行格式化处理
         display_df = runs_df[display_columns].copy()
-        numeric_columns = ['total_return', 'max_drawdown', 'sharpe_ratio', 'win_rate']
-        for col in numeric_columns:
+        
+        # 预先将需要格式化的列转换为object类型，避免pandas FutureWarning
+        format_columns = ['total_return', 'max_drawdown', 'sharpe_ratio', 'win_rate', 'total_trades']
+        for col in format_columns:
             if col in display_df.columns:
-                display_df[col] = pd.to_numeric(display_df[col], errors='coerce').round(2)
+                display_df[col] = display_df[col].astype('object')
+        
+        # 处理数值格式化，确保正确显示百分比和数值
+        for index, row in display_df.iterrows():
+            # 处理收益率（百分比）
+            if pd.notna(row['total_return']):
+                display_df.at[index, 'total_return'] = f"{float(row['total_return']):.2f}%"
+            else:
+                display_df.at[index, 'total_return'] = "0.00%"
+            
+            # 处理最大回撤（百分比）
+            if pd.notna(row['max_drawdown']):
+                display_df.at[index, 'max_drawdown'] = f"{float(row['max_drawdown']):.2f}%"
+            else:
+                display_df.at[index, 'max_drawdown'] = "0.00%"
+            
+            # 处理夏普比率（保留两位小数）
+            if pd.notna(row['sharpe_ratio']):
+                display_df.at[index, 'sharpe_ratio'] = f"{float(row['sharpe_ratio']):.2f}"
+            else:
+                display_df.at[index, 'sharpe_ratio'] = "0.00"
+            
+            # 处理胜率（百分比）
+            if pd.notna(row['win_rate']) and float(row['win_rate']) > 0:
+                display_df.at[index, 'win_rate'] = f"{float(row['win_rate']):.1f}%"
+            else:
+                display_df.at[index, 'win_rate'] = "0.0%"
+            
+            # 处理总交易次数（整数）
+            if pd.notna(row['total_trades']) and float(row['total_trades']) > 0:
+                display_df.at[index, 'total_trades'] = f"{int(float(row['total_trades']))}"
+            else:
+                display_df.at[index, 'total_trades'] = "0"
+        
+        # 重命名列为中文表头
+        column_name_mapping = {
+            'run_id': '运行ID',
+            'symbol': '股票代码', 
+            'strategy_name': '策略名称',
+            'total_return': '总收益率',
+            'max_drawdown': '最大回撤',
+            'sharpe_ratio': '夏普比率',
+            'win_rate': '胜率',
+            'total_trades': '总交易次数',
+            'created_at': '创建时间'
+        }
+        
+        display_df = display_df.rename(columns=column_name_mapping)
         
         st.dataframe(
             display_df,
@@ -1214,73 +1153,32 @@ def show_historical_results():
                             fig = create_performance_chart(processed_daily_results)
                             st.plotly_chart(fig, use_container_width=True)
                             
-                            # 显示关键指标 - 使用与实际测试结果相同的逻辑
+                            # 显示关键指标 - 优化：直接使用数据库中的统计指标
                             st.subheader("📊 策略指标")
                             if processed_daily_results:
-                                # 计算策略综合指标
-                                final_data = processed_daily_results[-1]
-                                final_return_ratio = final_data.get('return_ratio', 0)
-                                total_pnl = final_data.get('total_pnl', 0)
-                                final_win_loss_ratio = final_data.get('win_loss_ratio', 0)
-                                
-                                # 计算最大回撤
-                                cumulative_assets = [INITIAL_CAPITAL + d.get('total_pnl', 0) for d in processed_daily_results]
-                                cumulative_max = []
-                                current_max = cumulative_assets[0]
-                                for asset in cumulative_assets:
-                                    if asset > current_max:
-                                        current_max = asset
-                                    cumulative_max.append(current_max)
-                                
-                                drawdowns = [(asset - max_val) / max_val for asset, max_val in zip(cumulative_assets, cumulative_max)]
-                                max_drawdown = min(drawdowns) * 100 if drawdowns else 0
-                                
-                                # 计算年化指标
-                                daily_returns = []
-                                for i in range(1, len(processed_daily_results)):
-                                    prev_pnl = processed_daily_results[i-1].get('total_pnl', 0)
-                                    curr_pnl = processed_daily_results[i].get('total_pnl', 0)
-                                    daily_return = (curr_pnl - prev_pnl) / INITIAL_CAPITAL
-                                    daily_returns.append(daily_return)
-                                
-                                if daily_returns:
-                                    avg_daily_return = sum(daily_returns) / len(daily_returns)
-                                    std_daily_return = (sum([(r - avg_daily_return) ** 2 for r in daily_returns]) / len(daily_returns)) ** 0.5
-                                    
-                                    annual_return = avg_daily_return * 252 * 100
-                                    annual_volatility = std_daily_return * (252 ** 0.5) * 100
-                                    sharpe_ratio = (avg_daily_return * 252) / (std_daily_return * (252 ** 0.5)) if std_daily_return > 0 else 0
-                                else:
-                                    annual_return = 0
-                                    annual_volatility = 0
-                                    sharpe_ratio = 0
-                                
-                                # 获取交易统计
-                                trades_data = details.get('trades', [])
-                                total_trades = len(trades_data)
-                                winning_trades = len([t for t in trades_data if t.get('pnl', 0) > 0])
-                                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                                # 优化：直接从数据库获取统计指标，避免重复计算
+                                strategy_metrics = get_run_statistics(run_id=run_id)
                                 
                                 # 显示关键指标
                                 metric_col1, metric_col2, metric_col3, metric_col4, metric_col5, metric_col6 = st.columns(6)
                                 
                                 with metric_col1:
-                                    st.metric("策略收益率", f"{final_return_ratio:.2f}%")
+                                    st.metric("策略收益率", f"{strategy_metrics['total_return']:.2f}%")
                                 
                                 with metric_col2:
-                                    st.metric("年化收益率", f"{annual_return:.2f}%")
+                                    st.metric("年化收益率", f"{strategy_metrics['annual_return']:.2f}%")
                                 
                                 with metric_col3:
-                                    st.metric("总盈亏", f"{total_pnl:,.0f}")
+                                    st.metric("总盈亏", f"{strategy_metrics['total_pnl']:,.0f}")
                                 
                                 with metric_col4:
-                                    st.metric("最大回撤", f"{max_drawdown:.2f}%")
+                                    st.metric("最大回撤", f"{strategy_metrics['max_drawdown']:.2f}%")
                                 
                                 with metric_col5:
-                                    st.metric("夏普比率", f"{sharpe_ratio:.2f}")
+                                    st.metric("夏普比率", f"{strategy_metrics['sharpe_ratio']:.2f}")
                                 
                                 with metric_col6:
-                                    st.metric("胜率", f"{win_rate:.1f}%")
+                                    st.metric("胜率", f"{strategy_metrics['win_rate']:.1f}%")
                         else:
                             st.warning("数据处理失败，无法生成图表")
                     
@@ -1288,6 +1186,74 @@ def show_historical_results():
         st.error(f"加载历史数据失败: {e}")
         import traceback
         st.error(f"详细错误信息: {traceback.format_exc()}")
+
+def get_run_statistics(run_id: str = None, daily_results: List = None, trades: List = None) -> Dict[str, float]:
+    """
+    获取运行统计指标，优先从数据库获取
+    
+    Args:
+        run_id: 运行ID，如果提供则从数据库获取
+        daily_results: 每日结果数据（用于计算final_win_loss_ratio）
+        trades: 交易数据（保留接口兼容性）
+    
+    Returns:
+        统计指标字典
+    """
+    # 添加缓存机制，避免在同一session中重复查询数据库
+    if 'stats_cache' not in st.session_state:
+        st.session_state.stats_cache = {}
+    
+    # 从数据库获取已计算的统计指标
+    if run_id:
+        # 检查缓存
+        if run_id in st.session_state.stats_cache:
+            return st.session_state.stats_cache[run_id]
+        
+        try:
+            db = get_db_manager()
+            details = db.get_run_details(run_id)
+            if details and details.get('stats'):
+                stats_info = details['stats']
+                # 构建统计指标字典，使用数据库中的值
+                result = {
+                    'total_return': stats_info.get('total_return', 0) or 0,
+                    'annual_return': stats_info.get('annual_return', 0) or 0,
+                    'max_drawdown': stats_info.get('max_drawdown', 0) or 0,
+                    'sharpe_ratio': stats_info.get('sharpe_ratio', 0) or 0,
+                    'profit_factor': stats_info.get('profit_factor', 0) or 0,
+                    'win_rate': stats_info.get('win_rate', 0) or 0,
+                    'total_trades': stats_info.get('total_trades', 0) or 0,
+                    'total_pnl': stats_info.get('total_pnl', 0) or 0,
+                    'max_profit': stats_info.get('max_profit', 0) or 0,
+                    'max_loss': stats_info.get('max_loss', 0) or 0,
+                    'final_win_loss_ratio': 0,  # 从daily_results计算或使用默认值
+                    'annual_volatility': stats_info.get('annual_volatility', 0) or 0
+                }
+                
+                # 如果有daily_results，计算final_win_loss_ratio
+                if daily_results and len(daily_results) > 0:
+                    processed_daily = StatisticsCalculator._process_daily_results(daily_results, INITIAL_CAPITAL)
+                    if processed_daily:
+                        result['final_win_loss_ratio'] = processed_daily[-1].get('win_loss_ratio', 0)
+                
+                # 缓存结果
+                st.session_state.stats_cache[run_id] = result
+                return result
+            else:
+                # 数据库中没有统计数据
+                st.error(f"❌ 数据库中没有找到run_id={run_id}的统计数据")
+                print(f"❌ 错误：run_id={run_id}的统计数据不存在或为空")
+                return StatisticsCalculator._get_default_stats()
+                
+        except Exception as e:
+            st.error(f"❌ 从数据库获取统计指标失败: {str(e)}")
+            print(f"❌ 数据库查询失败: run_id={run_id}, 错误={str(e)}")
+            return StatisticsCalculator._get_default_stats()
+    
+    # 没有run_id的情况
+    st.error("❌ 缺少run_id，无法获取统计指标")
+    print("❌ 错误：调用get_run_statistics时未提供run_id")
+    return StatisticsCalculator._get_default_stats()
 
 def main():
     """主函数"""

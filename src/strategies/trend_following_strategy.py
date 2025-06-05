@@ -52,6 +52,7 @@ class TrendFollowingStrategy(CtaTemplate):
     total_pnl = 0.0
     position_pnl = 0.0
 
+    # 策略参数和变量列表， 父类会自动读取这些参数和变量
     parameters = [
         "fast_ma_length",
         "slow_ma_length",

@@ -11,6 +11,9 @@ import os
 
 import pandas as pd
 
+from src.constants import INITIAL_CAPITAL
+from src.utils.statistics_calculator import StatisticsCalculator
+
 
 class BacktestResultsDB:
     """回测结果数据库管理器 - 单例模式"""
@@ -78,73 +81,73 @@ class BacktestResultsDB:
             # 回测运行记录表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_runs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT UNIQUE NOT NULL,
-                    symbol TEXT NOT NULL,
-                    strategy_name TEXT NOT NULL,
-                    start_date TEXT NOT NULL,
-                    end_date TEXT NOT NULL,
-                    strategy_params TEXT NOT NULL,
-                    run_time TEXT NOT NULL,
-                    status TEXT DEFAULT 'running',
-                    html_path TEXT,
-                    png_path TEXT,
-                    excel_path TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,                    -- 主键ID，自增
+                    run_id TEXT UNIQUE NOT NULL,                             -- 回测运行唯一标识，格式：YYYYMMDD_HHMMSS
+                    symbol TEXT NOT NULL,                                    -- 交易标的代码，如：000001.SZ
+                    strategy_name TEXT NOT NULL,                             -- 策略名称
+                    start_date TEXT NOT NULL,                                -- 回测开始日期，格式：YYYY-MM-DD
+                    end_date TEXT NOT NULL,                                  -- 回测结束日期，格式：YYYY-MM-DD
+                    strategy_params TEXT NOT NULL,                           -- 策略参数，JSON格式存储
+                    run_time TEXT NOT NULL,                                  -- 回测执行时间，ISO格式
+                    status TEXT DEFAULT 'running',                           -- 回测状态：running/completed/failed
+                    html_path TEXT,                                          -- HTML报告文件路径
+                    png_path TEXT,                                           -- PNG图表文件路径
+                    excel_path TEXT,                                         -- Excel报告文件路径
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP          -- 记录创建时间
                 )
             """)
             
-            # 回测统计结果表
+            # 回测统计结果表 - 包含所有需要的列
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL,
-                    total_return REAL,
-                    annual_return REAL,
-                    max_drawdown REAL,
-                    sharpe_ratio REAL,
-                    profit_factor REAL,
-                    win_rate REAL,
-                    total_trades INTEGER,
-                    total_pnl REAL,
-                    max_profit REAL,
-                    max_loss REAL,
-                    stats_json TEXT,
-                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,                    -- 主键ID，自增
+                    run_id TEXT NOT NULL,                                    -- 关联回测运行ID
+                    total_return REAL,                                       -- 总收益率(%)
+                    annual_return REAL,                                      -- 年化收益率(%)
+                    max_drawdown REAL,                                       -- 最大回撤(%)
+                    sharpe_ratio REAL,                                       -- 夏普比率
+                    profit_factor REAL,                                      -- 盈利因子（总盈利/总亏损）
+                    win_rate REAL,                                           -- 胜率(%)，盈利交易数/总交易数
+                    total_trades INTEGER,                                    -- 总交易次数（开仓+平仓）
+                    total_pnl REAL,                                          -- 总盈亏金额
+                    max_profit REAL,                                         -- 最大单笔盈利
+                    max_loss REAL,                                           -- 最大单笔亏损
+                    stats_json TEXT,                                         -- 原始统计数据JSON
+                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)  -- 外键约束
                 )
             """)
             
             # 交易记录表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL,
-                    trade_datetime TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    offset TEXT NOT NULL,
-                    price REAL NOT NULL,
-                    volume INTEGER NOT NULL,
-                    pnl REAL DEFAULT 0,
-                    commission REAL DEFAULT 0,
-                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,                    -- 主键ID，自增
+                    run_id TEXT NOT NULL,                                    -- 关联回测运行ID
+                    trade_datetime TEXT NOT NULL,                            -- 交易时间，ISO格式
+                    symbol TEXT NOT NULL,                                    -- 交易标的代码
+                    direction TEXT NOT NULL,                                 -- 交易方向：LONG/SHORT
+                    offset TEXT NOT NULL,                                    -- 开平标志：OPEN/CLOSE
+                    price REAL NOT NULL,                                     -- 成交价格
+                    volume INTEGER NOT NULL,                                 -- 成交数量（股数）
+                    pnl REAL DEFAULT 0,                                      -- 交易盈亏（vnpy计算，通常为0）
+                    commission REAL DEFAULT 0,                               -- 交易佣金
+                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)  -- 外键约束
                 )
             """)
             
             # 每日结果表 - 添加唯一约束防止重复数据
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_daily_results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    balance REAL NOT NULL,
-                    total_value REAL NOT NULL,
-                    pnl REAL NOT NULL,
-                    net_pnl REAL NOT NULL,
-                    commission REAL NOT NULL,
-                    position REAL DEFAULT 0,
-                    UNIQUE(run_id, date),
-                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,                    -- 主键ID，自增
+                    run_id TEXT NOT NULL,                                    -- 关联回测运行ID
+                    date TEXT NOT NULL,                                      -- 日期，格式：YYYY-MM-DD
+                    balance REAL NOT NULL,                                   -- 现金余额
+                    total_value REAL NOT NULL,                               -- 总资产价值（现金+持仓市值）
+                    pnl REAL NOT NULL,                                       -- 当日盈亏
+                    net_pnl REAL NOT NULL,                                   -- 当日净盈亏（扣除佣金）
+                    commission REAL NOT NULL,                                -- 当日佣金
+                    position REAL DEFAULT 0,                                 -- 持仓数量
+                    UNIQUE(run_id, date),                                    -- 唯一约束：每个运行每天只能有一条记录
+                    FOREIGN KEY (run_id) REFERENCES backtest_runs (run_id)  -- 外键约束
                 )
             """)
             
@@ -196,6 +199,10 @@ class BacktestResultsDB:
                 WHERE run_id = ?
             """, (html_path, png_path, excel_path, run_id))
             
+            # 计算统计指标
+            calculated_stats = StatisticsCalculator.calculate_backtest_statistics(
+                daily_results, trades, INITIAL_CAPITAL)
+            
             # 将 DataFrame 转换为字典并序列化
             stats_dict = stats.to_dict()
             # 处理非JSON兼容的键（如datetime.date）
@@ -210,21 +217,24 @@ class BacktestResultsDB:
             stats_dict_converted = convert_keys(stats_dict)
             stats_json = json.dumps(stats_dict_converted, ensure_ascii=False, default=str)
             
-            # 保存统计结果
+            # 保存统计结果 - 使用计算出的统计指标
             cursor.execute("""
                 INSERT OR REPLACE INTO backtest_stats 
                 (run_id, total_return, annual_return, max_drawdown, sharpe_ratio, 
-                 profit_factor, win_rate, total_trades, stats_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 profit_factor, win_rate, total_trades, total_pnl, max_profit, max_loss, stats_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_id,
-                stats.get('total_return', 0) if 'total_return' in stats.columns else 0,
-                stats.get('annual_return', 0) if 'annual_return' in stats.columns else 0,
-                stats.get('max_drawdown', 0) if 'max_drawdown' in stats.columns else 0,
-                stats.get('sharpe_ratio', 0) if 'sharpe_ratio' in stats.columns else 0,
-                stats.get('profit_factor', 0) if 'profit_factor' in stats.columns else 0,
-                stats.get('win_rate', 0) if 'win_rate' in stats.columns else 0,
-                stats.get('total_trades', 0) if 'total_trades' in stats.columns else 0,
+                calculated_stats['total_return'],
+                calculated_stats['annual_return'],
+                calculated_stats['max_drawdown'],
+                calculated_stats['sharpe_ratio'],
+                calculated_stats['profit_factor'],
+                calculated_stats['win_rate'],
+                calculated_stats['total_trades'],
+                calculated_stats['total_pnl'],
+                calculated_stats['max_profit'],
+                calculated_stats['max_loss'],
                 stats_json
             ))
             
@@ -268,8 +278,9 @@ class BacktestResultsDB:
         """获取所有回测运行记录"""
         with self.get_connection() as conn:
             df = pd.read_sql_query("""
-                SELECT br.*, bs.total_return, bs.max_drawdown, bs.sharpe_ratio, 
-                       bs.win_rate, bs.total_trades
+                SELECT br.*, bs.total_return, bs.annual_return, bs.max_drawdown, bs.sharpe_ratio, 
+                       bs.profit_factor, bs.win_rate, bs.total_trades, bs.total_pnl, 
+                       bs.max_profit, bs.max_loss
                 FROM backtest_runs br
                 LEFT JOIN backtest_stats bs ON br.run_id = bs.run_id
                 ORDER BY br.created_at DESC

@@ -10,9 +10,8 @@ from vnpy_ctastrategy.backtesting import BacktestingEngine
 from src.conf.backtest_config import BacktestConfig
 from src.storage.data_loader import DataLoader
 from src.storage.db_utils import get_db_manager, init_database
-from result_analyzer import ResultAnalyzer
-
-INITIAL_CAPITAL = 1_000_000
+from src.result_analyzer import ResultAnalyzer
+from src.constants import INITIAL_CAPITAL
 
 
 class BacktestRunner:
