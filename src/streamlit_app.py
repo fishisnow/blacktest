@@ -4,7 +4,6 @@ vnpy趋势跟踪策略回测系统 - Streamlit版本
 """
 import time
 import traceback
-from datetime import datetime
 from typing import List, Dict
 
 import numpy as np
@@ -30,296 +29,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# 自定义暗黑模式CSS - 富途风格
-st.markdown("""
-<style>
-    /* 全局主题设置 */
-    .stApp {
-        background-color: #0e1117;
-        color: #ffffff;
-    }
-    
-    /* 侧边栏样式 */
-    .css-1d391kg {
-        background-color: #161b22;
-    }
-    
-    /* 主内容区域 */
-    .main .block-container {
-        background-color: #0e1117;
-        padding-top: 2rem;
-    }
-    
-    /* 标题样式 */
-    h1, h2, h3 {
-        color: #ffffff !important;
-        font-weight: 600;
-    }
-    
-    /* 子标题样式 */
-    .stSubheader {
-        color: #ffffff !important;
-        border-bottom: 2px solid #21262d;
-        padding-bottom: 0.5rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* 指标卡片样式 */
-    .metric-container {
-        background-color: #161b22;
-        border: 1px solid #21262d;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-    }
-    
-    /* 按钮样式 */
-    .stButton > button {
-        background-color: #238636;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-weight: 500;
-        transition: all 0.2s ease;
-    }
-    
-    .stButton > button:hover {
-        background-color: #2ea043;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(35, 134, 54, 0.3);
-    }
-    
-    /* 主要按钮样式 */
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #1f6feb 0%, #0969da 100%);
-        color: white;
-        font-weight: 600;
-    }
-    
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #0969da 0%, #0550ae 100%);
-    }
-    
-    /* 选择框样式 */
-    .stSelectbox > div > div {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #ffffff;
-    }
-    
-    /* 滑块样式 */
-    .stSlider > div > div > div {
-        background-color: #21262d;
-    }
-    
-    /* 日期输入样式 */
-    .stDateInput > div > div {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #ffffff;
-    }
-    
-    /* 数据表格样式 */
-    .stDataFrame {
-        background-color: #161b22;
-        border: 1px solid #21262d;
-        border-radius: 8px;
-    }
-    
-    /* 表格头部 */
-    .stDataFrame table thead tr th {
-        background-color: #21262d !important;
-        color: #ffffff !important;
-        font-weight: 600;
-        border-bottom: 2px solid #30363d;
-    }
-    
-    /* 表格行 */
-    .stDataFrame table tbody tr {
-        background-color: #0e1117;
-        border-bottom: 1px solid #21262d;
-    }
-    
-    .stDataFrame table tbody tr:hover {
-        background-color: #161b22;
-    }
-    
-    /* 涨跌颜色 */
-    .profit-color {
-        color: #56d364 !important;
-        font-weight: 600;
-    }
-    
-    .loss-color {
-        color: #f85149 !important;
-        font-weight: 600;
-    }
-    
-    /* 进度条样式 */
-    .stProgress > div > div > div {
-        background: linear-gradient(90deg, #238636 0%, #2ea043 100%);
-    }
-    
-    /* 警告和信息框样式 */
-    .stAlert {
-        background-color: #161b22;
-        border: 1px solid #f79000;
-        border-radius: 8px;
-        color: #ffffff;
-    }
-    
-    .stSuccess {
-        background-color: #161b22;
-        border: 1px solid #238636;
-        border-radius: 8px;
-        color: #56d364;
-    }
-    
-    .stError {
-        background-color: #161b22;
-        border: 1px solid #da3633;
-        border-radius: 8px;
-        color: #f85149;
-    }
-    
-    /* 导航栏样式 */
-    .css-1kyxreq {
-        background-color: #161b22;
-        border-right: 1px solid #21262d;
-    }
-    
-    /* 展开器样式 */
-    .streamlit-expanderHeader {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        border-radius: 6px;
-        color: #ffffff;
-    }
-    
-    /* 文本输入框样式 */
-    .stTextInput > div > div {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #ffffff;
-    }
-    
-    /* 数字输入框样式 */
-    .stNumberInput > div > div {
-        background-color: #21262d;
-        border: 1px solid #30363d;
-        color: #ffffff;
-    }
-    
-    /* 图表容器样式 */
-    .js-plotly-plot, .plotly {
-        background-color: #0e1117 !important;
-    }
-    
-    /* 自定义指标样式 */
-    .custom-metric {
-        background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
-        border: 1px solid #30363d;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-        margin: 0.5rem;
-        transition: all 0.3s ease;
-    }
-    
-    .custom-metric:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(255, 255, 255, 0.1);
-        border-color: #58a6ff;
-    }
-    
-    .metric-label {
-        font-size: 0.875rem;
-        color: #8b949e;
-        margin-bottom: 0.5rem;
-    }
-    
-    .metric-value {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #ffffff;
-    }
-    
-    .metric-value.positive {
-        color: #56d364;
-    }
-    
-    .metric-value.negative {
-        color: #f85149;
-    }
-    
-    /* 卡片样式 */
-    .info-card {
-        background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* 交易记录样式优化 */
-    .trade-row-profit {
-        background-color: rgba(86, 211, 100, 0.1) !important;
-    }
-    
-    .trade-row-loss {
-        background-color: rgba(248, 81, 73, 0.1) !important;
-    }
-    
-    /* 滚动条样式 */
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #161b22;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: #30363d;
-        border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: #484f58;
-    }
-    
-    /* 富途风格的专业配色 */
-    .futu-green {
-        color: #00d4aa !important;
-    }
-    
-    .futu-red {
-        color: #ff4757 !important;
-    }
-    
-    .futu-blue {
-        color: #3742fa !important;
-    }
-    
-    .futu-orange {
-        color: #ffa502 !important;
-    }
-    
-    /* 页面标题样式 */
-    .main-title {
-        background: linear-gradient(135deg, #58a6ff 0%, #1f6feb 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 2.5rem;
-        font-weight: 800;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # 全局状态管理
 if 'backtest_running' not in st.session_state:
@@ -525,20 +234,16 @@ def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.
                     low=lows,
                     close=closes,
                     name='K线',
-                    increasing_line_color='red',
-                    decreasing_line_color='green'
                 ),
                 row=1, col=1
             )
 
             # 成交量
-            volume_colors = ['red' if c >= o else 'green' for c, o in zip(closes, opens)]
             fig.add_trace(
                 go.Bar(
                     x=dates,
                     y=volumes,
                     name='成交量',
-                    marker_color=volume_colors,
                     opacity=0.7
                 ),
                 row=2, col=1
@@ -862,9 +567,6 @@ def create_performance_chart(daily_results, symbol=None, start_date=None, end_da
 def show_backtest_interface():
     """显示回测界面"""
 
-    # 富途风格的专业标题
-    st.markdown('<h1 class="main-title">📈 量化交易回测系统</h1>', unsafe_allow_html=True)
-
     # 加载股票代码
     try:
         all_symbols = get_all_symbols()
@@ -982,14 +684,14 @@ def show_backtest_interface():
             st.markdown("**💰 资金管理**")
             position_mode = st.selectbox(
                 "仓位模式",
-                options=["固定手数", "1/4仓", "1/2仓", "全仓"],
+                options=["全仓", "1/2仓", "1/4仓", "固定手数"],
                 index=0,
                 help="选择每次交易的仓位大小"
             )
 
             # 只有在固定手数模式下才显示手数设置
             if position_mode == "固定手数":
-                fixed_size = st.number_input("固定交易手数", 1, 10, 1, help="每次交易的固定手数")
+                fixed_size = st.number_input("固定交易手数", 1, 100, 1, help="每次交易的固定手数")
             else:
                 fixed_size = 1  # 其他模式下的默认值，实际不会使用
 
