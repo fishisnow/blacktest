@@ -154,7 +154,7 @@ class TushareDataProvider(BaseDataProvider):
 
             # 创建BarData对象
             bar = BarData(
-                symbol=symbol,
+                symbol=symbol.split('.')[0],
                 exchange=exchange,
                 datetime=dt,
                 interval=Interval.DAILY,

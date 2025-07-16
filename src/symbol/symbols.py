@@ -81,7 +81,7 @@ class SymbolManager:
             elif code.endswith(".SZ"):
                 return Exchange.SZSE
         elif market == "HK":
-            return Exchange.HKFE
+            return Exchange.SEHK
         elif market == "US":
             return Exchange.NASDAQ
 

@@ -31,15 +31,35 @@ class BacktestRunner:
         self.data_loaded = False
 
     def _convert_to_vt_symbol(self, symbol: str) -> str:
+        """
+        将股票代码转换为vnpy标准格式
+        支持：
+        - A股：000001.SZ -> 000001.SZSE, 000001.SH -> 000001.SSE
+        - 港股：00700.HK -> 00700.SEHK
+        - 美股：AAPL.US -> AAPL.NASDAQ
+        """
         # 如果已经包含交易所后缀
         if '.' in symbol:
             code, exchange_suffix = symbol.split('.')
-            if exchange_suffix.upper() in ['SH', 'SSE']:
-                return f"{code}.SSE"
-            elif exchange_suffix.upper() in ['SZ', 'SZSE']:
-                return f"{code}.SZSE"
+            exchange_upper = exchange_suffix.upper()
 
-        raise ValueError(f"不支持的代码: {symbol}")
+            # A股 - 上海证券交易所
+            if exchange_upper == 'SH':
+                return f"{code}.SSE"
+            # A股 - 深圳证券交易所
+            elif exchange_upper == 'SZ':
+                return f"{code}.SZSE"
+            # 港股 - 香港交易所 港股代码格式相反
+            elif code == 'HK':
+                code = exchange_upper
+                return f"{code}.SEHK"
+            # 美股 - 纳斯达克（vnpy中美股通常用NASDAQ）
+            elif exchange_upper in 'US':
+                return f"{code}.NASDAQ"
+            else:
+                raise ValueError(f"不支持的交易所后缀: {exchange_suffix}")
+
+        raise ValueError(f"无法识别的股票代码格式: {symbol}")
 
     def setup_engine(self, symbol: str, start_date: datetime, end_date: datetime):
         """设置回测引擎"""
@@ -65,7 +85,6 @@ class BacktestRunner:
         """将数据保存到vnpy数据库，然后从数据库加载"""
         from vnpy.trader.database import get_database
 
-        # 1. 从tushare获取数据
         data = self.data_loader.get_index_data(symbol, start_date, end_date)
         if data is None or len(data) == 0:
             print("无法获取数据")

@@ -104,13 +104,13 @@ class DataLoader:
         """从多个数据源获取远程数据"""
         # 查找支持该股票代码的数据提供器（按优先级排序）
         providers = self.factory.find_providers_for_symbol(symbol)
-        
+
         if not providers:
             print(f"没有数据源支持股票代码: {symbol}")
             return None
 
         print(f"获取交易日范围: {start_date} ~ {end_date}")
-        
+
         # 按优先级尝试各个数据源
         for provider in providers:
             print(f"尝试从 {provider.get_data_source_name()} 获取数据...")
@@ -125,33 +125,16 @@ class DataLoader:
                     print(f"{provider.get_data_source_name()} 返回空数据")
             except Exception as e:
                 print(f"从 {provider.get_data_source_name()} 获取数据失败: {e}")
-        
+
         print(f"所有数据源都无法获取范围 {start_date} ~ {end_date} 的数据")
         return None
 
     def _determine_market(self, symbol: str) -> str:
-        """根据股票代码判断市场类型"""
-        # 查找支持该股票代码的数据提供器
-        providers = self.factory.find_providers_for_symbol(symbol)
-        
-        if providers:
-            try:
-                symbol_info = providers[0].get_symbol_info(symbol)
-                if symbol_info:
-                    # 根据交易所或代码后缀判断市场
-                    exchange = symbol_info.get('exchange', '')
-                    if 'SH' in str(exchange) or 'SZ' in str(exchange) or 'SSE' in str(exchange) or 'SZSE' in str(exchange):
-                        return "CN"  # 中国市场
-                    elif symbol.endswith('.SH') or symbol.endswith('.SZ'):
-                        return "CN"  # 中国市场
-                    else:
-                        return "US"  # 默认美国市场
-            except:
-                pass
-        
         # 根据代码格式判断
-        if symbol.endswith('.SH') or symbol.endswith('.SZ') or symbol.endswith('.SSE') or symbol.endswith('.SZSE'):
+        if symbol.endswith('.SH') or symbol.endswith('.SZ'):
             return "CN"
+        elif symbol.startswith('HK.'):
+            return "HK"
         else:
             return "US"  # 默认
 
@@ -189,7 +172,7 @@ class DataLoader:
 
             # 确定交易所
             exchange = Exchange.NASDAQ  # 默认值
-            
+
             # 尝试从数据提供器获取交易所信息
             providers = self.factory.find_providers_for_symbol(symbol)
             if providers:
@@ -388,10 +371,10 @@ class DataLoader:
     def get_supported_symbols(self) -> dict:
         """获取所有支持的股票代码"""
         supported = {}
-        
+
         # 获取所有数据源支持的股票代码
         symbol_sources = self.factory.get_supported_symbols_all()
-        
+
         for symbol, sources in symbol_sources.items():
             # 获取第一个支持该股票的数据源的详细信息
             providers = self.factory.find_providers_for_symbol(symbol)

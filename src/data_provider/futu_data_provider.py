@@ -3,7 +3,6 @@ Futu OpenAPI 数据提供器
 继承自 BaseDataProvider，实现 Futu 特定的数据获取逻辑
 """
 from typing import Optional, List, Dict, Any
-
 from futu import *
 from vnpy.trader.object import BarData, Interval
 
@@ -59,7 +58,7 @@ class FutuDataProvider(BaseDataProvider):
             symbol: 股票代码 (如 'US.AAPL', 'HK.00700')
             start_date: 开始日期 (格式: 'YYYY-MM-DD')
             end_date: 结束日期 (格式: 'YYYY-MM-DD')
-            **kwargs: 其他参数，如 session (交易时段)
+            **kwargs: 其他参数
         
         Returns:
             BarData 列表或 None
@@ -77,15 +76,9 @@ class FutuDataProvider(BaseDataProvider):
         symbol_info = get_symbol_info(symbol)
         name = symbol_info["name"]
 
-        # 获取交易时段参数
-        session = kwargs.get('session', 'ALL')
-
         print(f"从 Futu 获取 {name} ({symbol}) 的历史数据...")
 
         try:
-            # 转换会话类型
-            session_type = self._convert_session_type(session)
-
             # 获取所有数据（分页处理）
             all_data = []
             page_req_key = None
@@ -98,8 +91,7 @@ class FutuDataProvider(BaseDataProvider):
                         code=symbol,
                         start=start_date,
                         end=end_date,
-                        max_count=max_count,
-                        session=session_type
+                        max_count=max_count
                     )
                 else:
                     # 后续页
@@ -108,8 +100,7 @@ class FutuDataProvider(BaseDataProvider):
                         start=start_date,
                         end=end_date,
                         max_count=max_count,
-                        page_req_key=page_req_key,
-                        session=session_type
+                        page_req_key=page_req_key
                     )
 
                 if ret != RET_OK:
@@ -170,15 +161,6 @@ class FutuDataProvider(BaseDataProvider):
         finally:
             self.disconnect()
 
-    def _convert_session_type(self, session: str):
-        """转换会话类型"""
-        session_mapping = {
-            'ALL': Session.ALL,
-            'REGULAR': Session.REGULAR,
-            'AFTER_HOURS': Session.AFTER_HOURS
-        }
-        return session_mapping.get(session.upper(), Session.ALL)
-
     def _convert_to_bar_data(self, df: pd.DataFrame, symbol: str) -> List[BarData]:
         """将 Futu DataFrame 转换为 BarData 列表"""
         bars = []
@@ -192,7 +174,7 @@ class FutuDataProvider(BaseDataProvider):
 
             # 创建 BarData 对象
             bar = BarData(
-                symbol=symbol,
+                symbol=symbol.split('.')[-1],
                 exchange=exchange,
                 datetime=dt,
                 interval=Interval.DAILY,

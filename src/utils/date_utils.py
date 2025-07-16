@@ -32,7 +32,7 @@ class TradingDateUtils:
         
         Args:
             date: 日期字符串或datetime对象
-            market: 市场类型 ("CN"=中国, "US"=美国)
+            market: 市场类型 ("CN"=中国, "US"=美国, "HK"=香港)
         
         Returns:
             bool: 是否为交易日
@@ -49,6 +49,9 @@ class TradingDateUtils:
                 elif market == "US":
                     # 美国市场 - 纽交所日历
                     cal = self._pandas_market_calendars.get_calendar('XNYS')
+                elif market == "HK":
+                    # 香港市场 - 港交所日历
+                    cal = self._pandas_market_calendars.get_calendar('XHKG')
                 else:
                     print(f"不支持的市场类型: {market}")
                     return self._is_weekday(date)
@@ -129,6 +132,8 @@ class TradingDateUtils:
                     cal = self._pandas_market_calendars.get_calendar('XSHG')
                 elif market == "US":
                     cal = self._pandas_market_calendars.get_calendar('XNYS')
+                elif market == "HK":
+                    cal = self._pandas_market_calendars.get_calendar('XHKG')
                 else:
                     return self._simple_next_trading_day(date)
 
@@ -177,6 +182,8 @@ class TradingDateUtils:
                     cal = self._pandas_market_calendars.get_calendar('XSHG')
                 elif market == "US":
                     cal = self._pandas_market_calendars.get_calendar('XNYS')
+                elif market == "HK":
+                    cal = self._pandas_market_calendars.get_calendar('XHKG')
                 else:
                     return self._get_weekdays_in_range(start_date, end_date)
 
@@ -218,7 +225,7 @@ def is_trading_day(date: Union[str, datetime], market: str = "CN") -> bool:
     
     Args:
         date: 日期
-        market: 市场类型 ("CN"=中国, "US"=美国)
+        market: 市场类型 ("CN"=中国, "US"=美国, "HK"=香港)
     
     Returns:
         bool: 是否为交易日
@@ -261,3 +268,7 @@ if __name__ == "__main__":
     print("\n获取交易日列表测试:")
     trading_days = utils.get_trading_days_in_range("2025-05-01", "2025-06-10", "CN")
     print(f"2024-01-01 到 2024-01-10 的交易日: {trading_days}")
+
+    print("\n香港市场交易日测试:")
+    hk_trading_days = utils.get_trading_days_in_range("2024-01-01", "2024-01-10", "HK")
+    print(f"香港市场 2024-01-01 到 2024-01-10 的交易日: {hk_trading_days}")
