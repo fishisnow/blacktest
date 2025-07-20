@@ -5,6 +5,8 @@ vnpy趋势跟踪策略回测系统 - Streamlit版本
 import time
 import traceback
 from typing import List, Dict
+import os
+import toml
 
 import numpy as np
 import pandas as pd
@@ -30,6 +32,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 添加简化的样式，主要用于指标颜色显示
+st.markdown("""
+<style>
+/* 自定义指标样式 - 适配Streamlit主题 */
+.custom-metric {
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.custom-metric .metric-label {
+    font-size: 14px;
+    opacity: 0.7;
+    margin-bottom: 5px;
+}
+
+.custom-metric .metric-value {
+    font-size: 24px;
+    font-weight: bold;
+    margin: 0;
+}
+
+/* 金融数据专用颜色 */
+.futu-green {
+    color: #00c853 !important;
+}
+
+.futu-red {
+    color: #ff1744 !important;
+}
+
+.futu-blue {
+    color: #2196f3 !important;
+}
+
+.futu-orange {
+    color: #ff9800 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # 全局状态管理
 if 'backtest_running' not in st.session_state:
     st.session_state.backtest_running = False
@@ -39,6 +83,75 @@ if 'current_symbol' not in st.session_state:
     st.session_state.current_symbol = None
 if 'backtest_results' not in st.session_state:
     st.session_state.backtest_results = None
+
+
+def get_streamlit_theme():
+    """
+    检测当前Streamlit主题模式，完全依赖Streamlit系统设置
+    
+    Returns:
+        str: 'dark' 或 'light'
+    """
+    try:
+        current_file_path = os.path.dirname(os.path.abspath(__file__))
+        config_path = f"{current_file_path}/../.streamlit/config.toml"
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = toml.load(f)
+                    theme_base = config.get('theme', {}).get('base', 'light')
+                    if theme_base in ['dark', 'light']:
+                        return theme_base
+            except Exception as e:
+                # 静默处理配置文件读取错误
+                pass
+        
+        # 默认返回light主题
+        return 'light'
+        
+    except Exception as e:
+        # 静默处理所有错误，默认返回light主题
+        return 'light'
+
+
+def get_plotly_theme_config(theme_mode=None):
+    """
+    根据Streamlit系统主题自动生成Plotly图表配置
+    图表样式将自动跟随Streamlit应用的主题设置
+    
+    Args:
+        theme_mode: 可选的主题模式，如果为None则自动从Streamlit系统设置检测
+        
+    Returns:
+        dict: 对应主题的Plotly图表配置字典
+    """
+    if theme_mode is None:
+        theme_mode = get_streamlit_theme()
+    
+    if theme_mode == 'dark':
+        return {
+            'template': 'plotly_dark',
+            'plot_bgcolor': '#0e1117',
+            'paper_bgcolor': '#0e1117',
+            'font_color': '#ffffff',
+            'title_font_color': '#ffffff',
+            'legend_bgcolor': 'rgba(22, 27, 34, 0.8)',
+            'legend_bordercolor': '#30363d',
+            'grid_color': '#30363d',
+            'annotation_font_color': '#ffffff'
+        }
+    else:  # light theme
+        return {
+            'template': 'plotly_white',
+            'plot_bgcolor': '#ffffff',
+            'paper_bgcolor': '#ffffff', 
+            'font_color': '#000000',
+            'title_font_color': '#000000',
+            'legend_bgcolor': 'rgba(255, 255, 255, 0.8)',
+            'legend_bordercolor': '#e1e5e9',
+            'grid_color': '#e1e5e9',
+            'annotation_font_color': '#000000'
+        }
 
 
 # 在文件开头添加字段转换函数
@@ -191,6 +304,9 @@ class BacktestExecutor:
 
 def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.Figure:
     """创建股票K线图"""
+    # 获取当前主题配置
+    theme_config = get_plotly_theme_config()
+    
     try:
         # 使用DataLoader直接获取数据
         data_loader = DataLoader()
@@ -249,19 +365,17 @@ def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.
                 row=2, col=1
             )
 
-            # 更新布局
+            # 更新布局 - 使用动态主题配置
             fig.update_layout(
                 title=f'{symbol} 历史走势图',
                 height=600,
                 showlegend=False,
                 xaxis_rangeslider_visible=False,
-                font=dict(size=12),
-                # 暗黑模式主题配置
-                template='plotly_dark',
-                plot_bgcolor='#0e1117',
-                paper_bgcolor='#0e1117',
-                font_color='#ffffff',
-                title_font=dict(size=16, color='#ffffff'),
+                font=dict(size=12, color=theme_config['font_color']),
+                template=theme_config['template'],
+                plot_bgcolor=theme_config['plot_bgcolor'],
+                paper_bgcolor=theme_config['paper_bgcolor'],
+                title_font=dict(size=16, color=theme_config['title_font_color']),
                 margin=dict(l=60, r=60, t=60, b=60)
             )
 
@@ -279,15 +393,15 @@ def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.
                 xref="paper", yref="paper",
                 x=0.5, y=0.5,
                 showarrow=False,
-                font=dict(size=16, color='#ffffff')
+                font=dict(size=16, color=theme_config['annotation_font_color'])
             )
             fig.update_layout(
                 height=400,
                 title=f"{symbol} K线图",
-                template='plotly_dark',
-                plot_bgcolor='#0e1117',
-                paper_bgcolor='#0e1117',
-                font_color='#ffffff'
+                template=theme_config['template'],
+                plot_bgcolor=theme_config['plot_bgcolor'],
+                paper_bgcolor=theme_config['paper_bgcolor'],
+                font=dict(color=theme_config['font_color'])
             )
             return fig
 
@@ -299,15 +413,15 @@ def create_stock_kline_chart(symbol: str, start_date: str, end_date: str) -> go.
             xref="paper", yref="paper",
             x=0.5, y=0.5,
             showarrow=False,
-            font=dict(size=14, color='#ffffff')
+            font=dict(size=14, color=theme_config['annotation_font_color'])
         )
         fig.update_layout(
             height=400,
             title="K线图生成失败",
-            template='plotly_dark',
-            plot_bgcolor='#0e1117',
-            paper_bgcolor='#0e1117',
-            font_color='#ffffff'
+            template=theme_config['template'],
+            plot_bgcolor=theme_config['plot_bgcolor'],
+            paper_bgcolor=theme_config['paper_bgcolor'],
+            font=dict(color=theme_config['font_color'])
         )
         print(f"K线图生成异常: {e}")
         return fig
@@ -504,22 +618,23 @@ def create_performance_chart(daily_results, symbol=None, start_date=None, end_da
         # 添加比值=1的参考线
         fig.add_hline(y=1, line_dash="dash", line_color="orange", row=3, col=1)
 
-    # 更新布局
+    # 获取当前主题配置
+    theme_config = get_plotly_theme_config()
+    
+    # 更新布局 - 使用动态主题配置
     fig.update_layout(
         title='回测性能分析',
         height=900,
         showlegend=True,
         hovermode='x unified',  # 恢复统一悬停模式以显示日期
-        font=dict(size=12),
-        # 暗黑模式主题配置
-        template='plotly_dark',
-        plot_bgcolor='#0e1117',
-        paper_bgcolor='#0e1117',
-        font_color='#ffffff',
-        title_font=dict(size=18, color='#ffffff'),
+        font=dict(size=12, color=theme_config['font_color']),
+        template=theme_config['template'],
+        plot_bgcolor=theme_config['plot_bgcolor'],
+        paper_bgcolor=theme_config['paper_bgcolor'],
+        title_font=dict(size=18, color=theme_config['title_font_color']),
         legend=dict(
-            bgcolor='rgba(22, 27, 34, 0.8)',
-            bordercolor='#30363d',
+            bgcolor=theme_config['legend_bgcolor'],
+            bordercolor=theme_config['legend_bordercolor'],
             borderwidth=1
         ),
         margin=dict(l=60, r=60, t=80, b=60)
