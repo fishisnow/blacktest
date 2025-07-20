@@ -173,6 +173,18 @@ export const MainContent = styled.div`
   display: flex;
   flex: 1;
   min-height: 0; /* 允许flex子项缩小 */
+  height: calc(100vh - ${futuTheme.layout.headerHeight}); /* 计算准确的可用高度 */
+  overflow: hidden; /* 防止整体页面滚动 */
+  
+  /* 响应式布局优化 */
+  @media (max-width: 1200px) {
+    flex-direction: column; /* 小屏幕下改为垂直布局 */
+  }
+  
+  @media (max-width: 768px) {
+    height: calc(100vh - ${futuTheme.layout.headerHeight});
+    overflow-y: auto;
+  }
 `
 
 export const ContentArea = styled.div`
@@ -180,8 +192,20 @@ export const ContentArea = styled.div`
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: ${futuTheme.layout.margin};
-  gap: ${futuTheme.layout.margin};
+  padding: 8px;                    // 调整为8px，之前6px太小
+  gap: 8px;                        // 调整为8px，之前6px太小
+  overflow-y: auto;                // 添加滚动支持
+  
+  /* 响应式优化 */
+  @media (max-width: 1600px) {
+    padding: 6px;
+    gap: 6px;
+  }
+  
+  @media (max-width: 1200px) {
+    padding: 4px;
+    gap: 4px;
+  }
 `
 
 // 通用卡片组件

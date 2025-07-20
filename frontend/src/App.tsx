@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { GlobalStyle, AppContainer, MainContent, ContentArea } from './styles/GlobalStyle'
 import { TopNavigation } from './components/Navigation/TopNavigation'
@@ -19,10 +19,24 @@ const App: React.FC = () => {
   // 应用状态管理
   const [currentPage, setCurrentPage] = useState<'backtest' | 'history'>('backtest')
   const [selectedSymbol, setSelectedSymbol] = useState<StockSymbol | null>(null)
+  // 获取默认日期
+  const getDefaultDates = () => {
+    const end = new Date()
+    const start = new Date()
+    start.setFullYear(end.getFullYear() - 1) // 默认1年
+    
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    }
+  }
+
+  const defaultDates = getDefaultDates()
+
   const [backtestParams, setBacktestParams] = useState<BacktestParams>({
     symbol: '',
-    startDate: '',
-    endDate: '',
+    startDate: defaultDates.start,
+    endDate: defaultDates.end,
     strategy: 'TrendFollowingStrategy',
     parameters: {
       fastMaPeriod: 10,
@@ -40,17 +54,13 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
 
   // 回测服务实例
-  const backtestService = new BacktestService()
+  const backtestService = useMemo(() => new BacktestService(), [])
 
   // 获取股票列表
   const [stockList, setStockList] = useState<StockSymbol[]>([])
 
-  useEffect(() => {
-    loadStockList()
-  }, [])
-
   // 加载股票列表
-  const loadStockList = async () => {
+  const loadStockList = useCallback(async () => {
     try {
       const stocks = await backtestService.getStockList()
       setStockList(stocks)
@@ -65,7 +75,13 @@ const App: React.FC = () => {
       setError('加载股票列表失败')
       console.error('Failed to load stock list:', err)
     }
-  }
+  }, [backtestService, selectedSymbol])
+
+  useEffect(() => {
+    loadStockList()
+  }, [loadStockList])
+
+
 
   // 执行回测
   const handleRunBacktest = async () => {
@@ -74,20 +90,25 @@ const App: React.FC = () => {
       return
     }
 
+    // 最终参数验证
+    const finalParams = {
+      ...backtestParams,
+      symbol: selectedSymbol.code,
+      startDate: backtestParams.startDate || defaultDates.start,
+      endDate: backtestParams.endDate || defaultDates.end
+    }
+
     try {
       setLoading(true)
       setError(null)
       setBacktestStatus('running')
       
-      const results = await backtestService.runBacktest({
-        ...backtestParams,
-        symbol: selectedSymbol.code
-      })
+      const results = await backtestService.runBacktest(finalParams)
       
       setBacktestResults(results)
       setBacktestStatus('completed')
     } catch (err) {
-      setError('回测执行失败')
+      setError(err instanceof Error ? err.message : '回测执行失败')
       setBacktestStatus('error')
       console.error('Backtest failed:', err)
     } finally {
@@ -103,12 +124,21 @@ const App: React.FC = () => {
   }
 
   // 参数变更处理
-  const handleParameterChange = (newParams: Partial<BacktestParams>) => {
-    setBacktestParams(prev => ({
-      ...prev,
-      ...newParams
-    }))
-  }
+  const handleParameterChange = useCallback((newParams: Partial<BacktestParams>) => {
+    setBacktestParams(prev => {
+      const updated = { ...prev, ...newParams }
+      
+      // 确保日期参数不为空
+      if (newParams.startDate === '' || (!updated.startDate && !newParams.startDate)) {
+        updated.startDate = defaultDates.start
+      }
+      if (newParams.endDate === '' || (!updated.endDate && !newParams.endDate)) {
+        updated.endDate = defaultDates.end
+      }
+      
+      return updated
+    })
+  }, [defaultDates])
 
   // 股票选择处理
   const handleSymbolChange = (symbol: StockSymbol) => {
@@ -166,8 +196,7 @@ const App: React.FC = () => {
                     <>
                       {/* 回测指标 */}
                       <MetricsPanel 
-                        results={backtestResults}
-                        selectedSymbol={selectedSymbol}
+                        metrics={backtestResults?.metrics || null}
                       />
 
                       {/* 交易明细 */}

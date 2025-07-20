@@ -13,14 +13,29 @@ const PanelContainer = styled.div`
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+  min-width: 360px;               // 添加最小宽度限制
+  max-width: 420px;               // 添加最大宽度限制
+  
+  /* 响应式适配 */
+  @media (max-width: 1600px) {
+    width: 360px;
+  }
+  
+  @media (max-width: 1400px) {
+    width: 340px;
+  }
+  
+  @media (max-width: 1200px) {
+    width: 320px;
+  }
 `
 
 // 面板内容
 const PanelContent = styled.div`
-  padding: ${futuTheme.layout.padding};
+  padding: 12px;                  // 从${futuTheme.layout.padding}减少到12px
   display: flex;
   flex-direction: column;
-  gap: ${futuTheme.layout.margin};
+  gap: 12px;                      // 从${futuTheme.layout.margin}减少到12px
 `
 
 // 区块标题
@@ -307,6 +322,17 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({
     }
   }, [stockSearchTerm, stockList])
 
+  // 确保日期参数不为空
+  useEffect(() => {
+    const defaultDates = getDefaultDates()
+    if (!backtestParams.startDate || !backtestParams.endDate) {
+      onParameterChange({
+        startDate: backtestParams.startDate || defaultDates.start,
+        endDate: backtestParams.endDate || defaultDates.end
+      })
+    }
+  }, [backtestParams.startDate, backtestParams.endDate, onParameterChange])
+
   // 获取默认日期
   const getDefaultDates = () => {
     const end = new Date()
@@ -395,11 +421,21 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({
             <DateRangeContainer>
               <DateInput
                 value={backtestParams.startDate || defaultDates.start}
-                onChange={(e) => onParameterChange({ startDate: e.target.value })}
+                onChange={(e) => {
+                  const value = e.target.value || defaultDates.start
+                  onParameterChange({ startDate: value })
+                }}
+                placeholder="开始日期"
+                required
               />
               <DateInput
                 value={backtestParams.endDate || defaultDates.end}
-                onChange={(e) => onParameterChange({ endDate: e.target.value })}
+                onChange={(e) => {
+                  const value = e.target.value || defaultDates.end
+                  onParameterChange({ endDate: value })
+                }}
+                placeholder="结束日期"
+                required
               />
             </DateRangeContainer>
           </FormGroup>

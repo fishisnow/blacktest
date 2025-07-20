@@ -11,7 +11,7 @@ from vnpy.trader.object import Exchange
 class SymbolManager:
     """股票代码管理器"""
 
-    def __init__(self, symbol_dir: str = "symbol"):
+    def __init__(self, symbol_dir: str = "src/symbol"):
         """
         初始化股票代码管理器
         

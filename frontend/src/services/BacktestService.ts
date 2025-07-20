@@ -121,7 +121,71 @@ export class BacktestService {
    */
   async runBacktest(params: BacktestParams): Promise<BacktestResults> {
     try {
-      const response = await apiClient.post<BacktestResponse>('/backtest', params)
+      // 参数验证
+      if (!params.symbol) {
+        throw new Error('股票代码不能为空')
+      }
+      
+      if (!params.startDate || !params.endDate) {
+        throw new Error('开始日期和结束日期不能为空')
+      }
+      
+      // 检查日期格式和有效性
+      const startDate = new Date(params.startDate)
+      const endDate = new Date(params.endDate)
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('日期格式无效，请使用 YYYY-MM-DD 格式')
+      }
+      
+      if (startDate >= endDate) {
+        throw new Error('开始日期必须早于结束日期')
+      }
+      
+      // 检查日期范围是否合理
+      const today = new Date()
+      if (endDate > today) {
+        throw new Error('结束日期不能超过当前日期')
+      }
+      
+      const maxDaysBack = 365 * 5 // 最多5年
+      const minDate = new Date()
+      minDate.setDate(today.getDate() - maxDaysBack)
+      
+      if (startDate < minDate) {
+        throw new Error('开始日期不能超过5年前')
+      }
+
+      // 转换仓位模式：前端英文值 → 后端中文值
+      const positionModeMap: { [key: string]: string } = {
+        'full': '全仓',
+        'half': '1/2仓',
+        'quarter': '1/4仓',
+        'fixed': '固定手数'
+      }
+
+      const mappedPositionMode = positionModeMap[params.parameters.positionMode] || params.parameters.positionMode
+      console.log(`🔄 仓位模式转换: ${params.parameters.positionMode} → ${mappedPositionMode}`)
+
+      // 转换参数格式以匹配后端 API
+      const backendParams = {
+        symbol: params.symbol,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        strategy: params.strategy,
+        parameters: {
+          fastMaPeriod: params.parameters.fastMaPeriod,
+          slowMaPeriod: params.parameters.slowMaPeriod,
+          atrPeriod: params.parameters.atrPeriod,
+          atrMultiplier: params.parameters.atrMultiplier,
+          positionMode: mappedPositionMode,
+          fixedSize: params.parameters.fixedSize
+        }
+      }
+
+      console.log('📤 发送到后端的参数:', backendParams)
+      
+      const response = await apiClient.post<BacktestResponse>('/backtest', backendParams)
       
       if (response.data.success && response.data.data) {
         return response.data.data
@@ -308,8 +372,8 @@ export class BacktestService {
         position = 100
       } else if (position > 0 && (ma5 < ma10 || i === candleData.length - 2)) {
         // 平多仓
-        const openTrade = trades[trades.length - 1]
-        const pnl = (current.close - openTrade.price) * position
+        const openTrade: any = trades[trades.length - 1]
+        const pnl: number = (current.close - openTrade.price) * position
         
         trades.push({
           id: `trade_${tradeId++}`,

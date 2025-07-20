@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import * as echarts from 'echarts'
 import styled from 'styled-components'
 import { futuTheme, candlestickColors } from '../../styles/theme'
@@ -114,7 +114,7 @@ export const KLineChart: React.FC<KLineChartProps> = ({
   }
 
   // 准备图表数据
-  const prepareChartData = () => {
+  const prepareChartData = useCallback(() => {
     if (!symbol || !dateRange[0] || !dateRange[1]) {
       return null
     }
@@ -151,10 +151,10 @@ export const KLineChart: React.FC<KLineChartProps> = ({
       ma20,
       candleData
     }
-  }
+  }, [symbol, dateRange, backtestResults])
 
   // 准备交易标记数据
-  const prepareTradeMarks = (chartData: any) => {
+  const prepareTradeMarks = useCallback((chartData: any) => {
     if (!backtestResults || !backtestResults.trades || !showTrades) {
       return []
     }
@@ -187,7 +187,7 @@ export const KLineChart: React.FC<KLineChartProps> = ({
     })
 
     return tradeMarks
-  }
+  }, [backtestResults, showTrades])
 
   // 初始化图表
   useEffect(() => {
@@ -296,13 +296,13 @@ export const KLineChart: React.FC<KLineChartProps> = ({
           left: '60px',
           right: '60px',
           top: '60px',
-          height: showVolume ? '60%' : '75%'
+          height: showVolume ? '65%' : '80%'  // 主图表：显示成交量时65%，不显示时80%
         },
         {
           left: '60px',
           right: '60px',
-          height: '15%',
-          bottom: '60px'
+          height: '25%',                      // 成交量图表：从15%增加到25%
+          bottom: '30px'                      // 底部空白：从60px减少到30px
         }
       ],
       xAxis: [
@@ -393,7 +393,7 @@ export const KLineChart: React.FC<KLineChartProps> = ({
         {
           type: 'slider',
           xAxisIndex: [0, 1],
-          bottom: 10,
+          bottom: 5,                          // 从10px减少到5px，适应新的底部空白
           height: 20,
           borderColor: futuTheme.colors.border,
           fillerColor: futuTheme.colors.futuBlue + '20',
@@ -509,7 +509,7 @@ export const KLineChart: React.FC<KLineChartProps> = ({
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [symbol, dateRange, backtestResults, showVolume, showMA, showTrades])
+  }, [symbol, dateRange, backtestResults, showVolume, showMA, showTrades, prepareChartData, prepareTradeMarks])
 
   return (
     <ChartContainer>

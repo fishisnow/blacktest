@@ -121,11 +121,11 @@ export const futuTheme = {
   // 布局尺寸
   layout: {
     headerHeight: '60px',
-    sidebarWidth: '320px',
+    sidebarWidth: '380px',  // 从320px增加到380px，为参数面板提供更多空间
     footerHeight: '300px',
-    borderRadius: '8px',
-    padding: '16px',
-    margin: '8px',
+    borderRadius: '6px',    // 从8px减少到6px，减少视觉噪音
+    padding: '12px',        // 从16px减少到12px，节省空间
+    margin: '6px',          // 从8px减少到6px，节省空间
   },
   
   // 动画

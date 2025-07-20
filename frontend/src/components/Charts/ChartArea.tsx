@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import styled from 'styled-components'
 import { futuTheme } from '../../styles/theme'
 import { Card } from '../../styles/GlobalStyle'
@@ -11,8 +11,10 @@ const ChartContainer = styled.div`
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: ${futuTheme.layout.margin};
+  gap: 8px;                       // 调整为8px，更好的视觉间距
   min-height: 0;
+  height: 100%;                   // 确保占满可用高度
+  overflow: hidden;               // 防止图表区域内容溢出
 `
 
 // 图表头部
@@ -71,18 +73,18 @@ const ChartContent = styled.div`
 
 // 主图表区域 (K线图)
 const MainChartArea = styled(Card)`
-  flex: 2;
-  min-height: 400px;
-  padding: 12px;
+  flex: 2.5;                      // 调整为2.5，比之前的3更平衡
+  min-height: 400px;              // 恢复为400px
+  padding: 10px;                  // 调整为10px，平衡空间利用
   position: relative;
 `
 
 // 副图表区域 (收益曲线)
 const SubChartArea = styled(Card)`
-  flex: 1;
-  min-height: 300px;
-  padding: 12px;
-  margin-top: ${futuTheme.layout.margin};
+  flex: 1;                        // 保持flex: 1
+  min-height: 280px;              // 调整为280px，给收益曲线更多空间
+  padding: 10px;                  // 调整为10px，保持一致
+  margin-top: 8px;                // 调整为8px，适当间距
   position: relative;
 `
 
@@ -149,7 +151,7 @@ const EmptyContainer = styled.div`
 `
 
 // 图表类型定义
-type ChartType = 'kline' | 'performance' | 'split'
+type ChartType = 'kline' | 'performance'
 
 // 组件属性接口
 interface ChartAreaProps {
@@ -167,7 +169,7 @@ export const ChartArea: React.FC<ChartAreaProps> = ({
   loading,
   error
 }) => {
-  const [chartType, setChartType] = useState<ChartType>('split')
+  const [chartType, setChartType] = useState<ChartType>('kline')
 
   // 图表标题获取
   const getChartTitle = () => {
@@ -268,12 +270,6 @@ export const ChartArea: React.FC<ChartAreaProps> = ({
           >
             📊 收益曲线
           </TabButton>
-          <TabButton 
-            active={chartType === 'split'}
-            onClick={() => setChartType('split')}
-          >
-            🔀 分屏显示
-          </TabButton>
         </ChartTabs>
       </ChartHeader>
 
@@ -294,36 +290,15 @@ export const ChartArea: React.FC<ChartAreaProps> = ({
         {chartType === 'performance' && backtestResults && (
           <MainChartArea>
             <PerformanceChart
-              results={backtestResults}
-              symbol={selectedSymbol}
+              dailyResults={backtestResults.dailyResults || []}
+              symbol={selectedSymbol?.code}
+              startDate={backtestParams.startDate}
+              endDate={backtestParams.endDate}
             />
           </MainChartArea>
         )}
 
-        {/* 分屏显示 */}
-        {chartType === 'split' && (
-          <>
-            {/* 主图：K线图 */}
-            <MainChartArea>
-              <KLineChart
-                symbol={selectedSymbol}
-                dateRange={[backtestParams.startDate, backtestParams.endDate]}
-                backtestResults={backtestResults}
-              />
-            </MainChartArea>
 
-            {/* 副图：收益曲线 */}
-            {backtestResults && (
-              <SubChartArea>
-                <PerformanceChart
-                  results={backtestResults}
-                  symbol={selectedSymbol}
-                  compact={true}
-                />
-              </SubChartArea>
-            )}
-          </>
-        )}
 
         {/* 只有K线图，没有回测结果时的提示 */}
         {chartType === 'performance' && !backtestResults && (
