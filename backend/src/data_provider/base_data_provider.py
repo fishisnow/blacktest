@@ -5,7 +5,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from vnpy.trader.object import BarData
-from src.conf.config import DataSource
+from backend.src.conf.config import DataSource
 
 
 class BaseDataProvider(ABC):

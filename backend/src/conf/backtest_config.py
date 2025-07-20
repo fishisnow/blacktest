@@ -13,7 +13,7 @@ from typing import Dict, Any
 class BacktestConfig:
     """回测配置类"""
     # 输出路径配置
-    output_base_dir: str = "../../backtest_results"
+    output_base_dir: str = "../../../backtest_results"
     html_output_dir: str = "html"
     png_output_dir: str = "charts"
     excel_output_dir: str = "reports"

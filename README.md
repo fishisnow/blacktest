@@ -194,7 +194,7 @@ python cache_manager.py clear --symbol AAPL
 ### 缓存操作
 
 ```python
-from src.storage.data_loader import DataLoader
+from backend.src.storage.data_loader import DataLoader
 
 loader = DataLoader()
 

@@ -8,21 +8,20 @@ from typing import List, Dict
 import os
 import toml
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from src.conf.backtest_config import BacktestConfig
-from src.blacktest_runner import BacktestRunner
-from src.storage.db_utils import get_db_manager
-from src.strategies.trend_following_strategy import TrendFollowingStrategy
+from backend.src.conf.backtest_config import BacktestConfig
+from backend.src.blacktest_runner import BacktestRunner
+from backend.src.storage.db_utils import get_db_manager
+from backend.src.strategies.trend_following_strategy import TrendFollowingStrategy
 # 导入回测相关模块
-from src.symbol.symbols import get_all_symbols, get_symbols_by_market
-from src.storage.data_loader import DataLoader
-from src.utils.statistics_calculator import StatisticsCalculator
-from src.constants import INITIAL_CAPITAL
+from backend.src.symbol.symbols import get_all_symbols, get_symbols_by_market
+from backend.src.storage.data_loader import DataLoader
+from backend.src.utils.statistics_calculator import StatisticsCalculator
+from backend.src.constants import INITIAL_CAPITAL
 
 # 页面配置
 st.set_page_config(
@@ -221,7 +220,7 @@ class BacktestExecutor:
 
             # 创建配置
             config = BacktestConfig(
-                output_base_dir="../backtest_results",
+                output_base_dir="../../backtest_results",
                 symbol=symbol,
                 strategy_name="TrendFollowingStrategy",
                 start_date=start_date.strftime("%Y-%m-%d"),
@@ -498,7 +497,7 @@ def create_performance_chart(daily_results, symbol=None, start_date=None, end_da
     benchmark_return = None
     if symbol and start_date and end_date:
         try:
-            from src.storage.data_loader import DataLoader
+            from backend.src.storage.data_loader import DataLoader
             from datetime import datetime, date
             data_loader = DataLoader()
 

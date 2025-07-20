@@ -289,8 +289,8 @@ else:
 ## 使用示例
 
 ```python
-from src.utils.statistics_calculator import StatisticsCalculator
-from src.constants import INITIAL_CAPITAL
+from backend.src.utils.statistics_calculator import StatisticsCalculator
+from backend.src.constants import INITIAL_CAPITAL
 
 # 计算统计指标
 stats = StatisticsCalculator.calculate_backtest_statistics(

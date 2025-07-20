@@ -16,6 +16,7 @@ venv
 backtest_results
 backtest_results.db
 
+frontend/node_modules
 
 # 日志文件
 *.log 
