@@ -117,8 +117,8 @@ const OffsetBadge = styled.span<{ offset: string }>`
 
 const PnlCell = styled(TableCell)<{ pnl: number }>`
   color: ${props => 
-    props.pnl > 0 ? '#52C41A' :
-    props.pnl < 0 ? '#FF4D4F' :
+    props.pnl > 0 ? '#FF4444' :  // 盈利显示红色
+    props.pnl < 0 ? '#00C853' :  // 亏损显示绿色
     '#F0F6FC'
   };
   font-weight: 600;
@@ -183,8 +183,8 @@ const StatLabel = styled.span`
 
 const StatValue = styled.span<{ positive?: boolean; negative?: boolean }>`
   color: ${props => 
-    props.positive ? '#52C41A' :
-    props.negative ? '#FF4D4F' :
+    props.positive ? '#FF4444' :  // 正值（盈利）显示红色
+    props.negative ? '#00C853' :  // 负值（亏损）显示绿色
     '#F0F6FC'
   };
   font-weight: 600;
@@ -230,10 +230,9 @@ export const TradeTable: React.FC<TradeTableProps> = ({ trades, loading = false 
     try {
       const date = new Date(dateStr)
       return date.toLocaleString('zh-CN', {
+        year: 'numeric',
         month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
+        day: '2-digit'
       })
     } catch {
       return dateStr
@@ -245,6 +244,53 @@ export const TradeTable: React.FC<TradeTableProps> = ({ trades, loading = false 
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
     })
+  }
+
+  // 计算平仓盈亏
+  const calculateClosePnl = (trades: TradeRecord[], currentTrade: TradeRecord): number => {
+    if (currentTrade.offset !== 'CLOSE') {
+      return 0
+    }
+
+    // 找到最近的一笔相反方向的开仓交易
+    const openTrades = trades.filter(t => 
+      t.offset === 'OPEN' && 
+      t.direction !== currentTrade.direction &&  // 查找相反方向的开仓交易
+      t.symbol === currentTrade.symbol
+    )
+
+    if (openTrades.length === 0) {
+      return 0
+    }
+
+    // 找到当前平仓之前最近的一笔开仓
+    const openTrade = openTrades.reduce((nearest, trade) => {
+      const tradeDate = new Date(trade.date).getTime()
+      const currentDate = new Date(currentTrade.date).getTime()
+      const nearestDate = new Date(nearest.date).getTime()
+      
+      if (tradeDate < currentDate && 
+          (nearest === openTrades[0] || tradeDate > nearestDate)) {
+        return trade
+      }
+      return nearest
+    }, openTrades[0])
+
+    // 计算盈亏
+    const pnl = (currentTrade.price - openTrade.price) * currentTrade.volume
+
+    console.log('平仓计算:', {
+      openPrice: openTrade.price,
+      closePrice: currentTrade.price,
+      volume: currentTrade.volume,
+      pnl: pnl,
+      openDate: openTrade.date,
+      closeDate: currentTrade.date,
+      openDirection: openTrade.direction,
+      closeDirection: currentTrade.direction
+    })
+
+    return pnl
   }
 
   if (loading) {
@@ -338,28 +384,33 @@ export const TradeTable: React.FC<TradeTableProps> = ({ trades, loading = false 
           </TableRow>
         </TableHead>
         <TableBody>
-          {paginatedTrades.map((trade) => (
-            <TableRow key={trade.id}>
-              <TableCell>{formatDateTime(trade.date)}</TableCell>
-              <TableCell>{trade.symbol}</TableCell>
-              <TableCell>
-                <DirectionBadge direction={trade.direction}>
-                  {trade.direction === 'LONG' ? '做多' : '做空'}
-                </DirectionBadge>
-              </TableCell>
-              <TableCell>
-                <OffsetBadge offset={trade.offset}>
-                  {trade.offset === 'OPEN' ? '开仓' : '平仓'}
-                </OffsetBadge>
-              </TableCell>
-              <TableCell>{formatNumber(trade.price)}</TableCell>
-              <TableCell>{trade.volume.toLocaleString()}</TableCell>
-              <PnlCell pnl={trade.pnl}>
-                {trade.pnl >= 0 ? '+' : ''}{formatNumber(trade.pnl)}
-              </PnlCell>
-              <TableCell>{formatNumber(trade.commission)}</TableCell>
-            </TableRow>
-          ))}
+          {paginatedTrades.map((trade) => {
+            const closePnl = calculateClosePnl(trades, trade)
+            return (
+              <TableRow key={trade.id}>
+                <TableCell>{formatDateTime(trade.date)}</TableCell>
+                <TableCell>{trade.symbol}</TableCell>
+                <TableCell>
+                  <DirectionBadge direction={trade.direction}>
+                    {trade.direction === 'LONG' ? '多' : '空'}
+                  </DirectionBadge>
+                </TableCell>
+                <TableCell>
+                  <OffsetBadge offset={trade.offset}>
+                    {trade.offset === 'OPEN' ? '开仓' : '平仓'}
+                  </OffsetBadge>
+                </TableCell>
+                <TableCell>{formatNumber(trade.price)}</TableCell>
+                <TableCell>{trade.volume.toLocaleString()}</TableCell>
+                <PnlCell pnl={trade.offset === 'CLOSE' ? closePnl : 0}>
+                  {trade.offset === 'CLOSE' ? (
+                    closePnl >= 0 ? `+${formatNumber(closePnl)}` : formatNumber(closePnl)
+                  ) : '-'}
+                </PnlCell>
+                <TableCell>{formatNumber(trade.commission)}</TableCell>
+              </TableRow>
+            )
+          })}
         </TableBody>
       </Table>
       

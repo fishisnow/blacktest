@@ -3,224 +3,76 @@ import { futuTheme } from './theme'
 
 export const GlobalStyle = createGlobalStyle`
   * {
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
-    box-sizing: border-box;
   }
 
-  html, body {
-    font-family: ${futuTheme.typography.fontFamily};
-    font-size: ${futuTheme.typography.fontSize.sm};
+  body {
+    background: ${futuTheme.colors.background};
     color: ${futuTheme.colors.textPrimary};
-    background-color: ${futuTheme.colors.background};
-    line-height: 1.5;
+    font-family: ${futuTheme.typography.fontFamily};
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
-  #root {
-    min-height: 100vh;
-    width: 100%;
-  }
-
-  /* 滚动条样式 - 富途风格 */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: ${futuTheme.colors.backgroundSecondary};
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: ${futuTheme.colors.border};
-    border-radius: 4px;
-    transition: background 0.2s ease;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: ${futuTheme.colors.textTertiary};
-  }
-
-  /* 选中文本样式 */
-  ::selection {
-    background-color: ${futuTheme.colors.futuBlue}40;
-    color: ${futuTheme.colors.textPrimary};
-  }
-
-  /* 通用按钮样式 */
   button {
-    font-family: inherit;
-    cursor: pointer;
-    border: none;
-    outline: none;
-    transition: all ${futuTheme.animation.duration} ${futuTheme.animation.easing};
-  }
-
-  /* 输入框样式 */
-  input, select, textarea {
-    font-family: inherit;
-    color: ${futuTheme.colors.textPrimary};
-    background-color: ${futuTheme.colors.backgroundSecondary};
-    border: 1px solid ${futuTheme.colors.border};
-    outline: none;
-    transition: border-color ${futuTheme.animation.duration} ${futuTheme.animation.easing};
-  }
-
-  input:focus, select:focus, textarea:focus {
-    border-color: ${futuTheme.colors.futuBlue};
-  }
-
-  /* 链接样式 */
-  a {
-    color: ${futuTheme.colors.futuBlue};
-    text-decoration: none;
-    transition: color ${futuTheme.animation.duration} ${futuTheme.animation.easing};
-  }
-
-  a:hover {
-    color: ${futuTheme.colors.buttonHover};
-  }
-
-  /* 表格样式 */
-  table {
-    border-collapse: collapse;
-    width: 100%;
-  }
-
-  th, td {
-    text-align: left;
-    padding: 8px 12px;
-    border-bottom: 1px solid ${futuTheme.colors.border};
-  }
-
-  th {
-    background-color: ${futuTheme.colors.tableHeader};
-    font-weight: ${futuTheme.typography.fontWeight.medium};
-    color: ${futuTheme.colors.textSecondary};
-  }
-
-  tr:hover {
-    background-color: ${futuTheme.colors.tableRowHover};
-  }
-
-  /* 自定义富途组件样式类 */
-  .futu-card {
-    background-color: ${futuTheme.colors.cardBackground};
-    border: 1px solid ${futuTheme.colors.border};
-    border-radius: ${futuTheme.layout.borderRadius};
-    padding: ${futuTheme.layout.padding};
-    box-shadow: ${futuTheme.shadows.small};
-  }
-
-  .futu-panel {
-    background-color: ${futuTheme.colors.panelBackground};
-    border: 1px solid ${futuTheme.colors.border};
-    border-radius: ${futuTheme.layout.borderRadius};
-  }
-
-  /* 金融数据颜色类 */
-  .price-up {
-    color: ${futuTheme.colors.futuGreen} !important;
-  }
-
-  .price-down {
-    color: ${futuTheme.colors.futuRed} !important;
-  }
-
-  .price-neutral {
-    color: ${futuTheme.colors.textSecondary} !important;
-  }
-
-  /* 响应式断点 */
-  @media (max-width: 1920px) {
-    html {
-      font-size: 14px;
-    }
-  }
-
-  @media (max-width: 1440px) {
-    html {
-      font-size: 13px;
-    }
-  }
-
-  @media (max-width: 1200px) {
-    html {
-      font-size: 12px;
-    }
-  }
-
-  /* 高分辨率显示器优化 */
-  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
-    * {
-      -webkit-font-smoothing: subpixel-antialiased;
-    }
+    font-family: ${futuTheme.typography.fontFamily};
   }
 `
 
-// 布局容器组件
 export const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  background-color: ${futuTheme.colors.background};
+  height: 100vh;
+  overflow: hidden;
 `
 
-export const MainContent = styled.div`
+export const MainContent = styled.main`
   display: flex;
   flex: 1;
-  min-height: 0; /* 允许flex子项缩小 */
-  height: calc(100vh - ${futuTheme.layout.headerHeight}); /* 计算准确的可用高度 */
-  overflow: hidden; /* 防止整体页面滚动 */
-  
-  /* 响应式布局优化 */
-  @media (max-width: 1200px) {
-    flex-direction: column; /* 小屏幕下改为垂直布局 */
-  }
-  
-  @media (max-width: 768px) {
-    height: calc(100vh - ${futuTheme.layout.headerHeight});
-    overflow-y: auto;
-  }
+  min-height: 0;
+  padding: 16px;
+  gap: 16px;
+  height: calc(100vh - ${futuTheme.layout.headerHeight});
+  overflow: hidden;
 `
 
 export const ContentArea = styled.div`
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  padding: 8px;                    // 调整为8px，之前6px太小
-  gap: 8px;                        // 调整为8px，之前6px太小
-  overflow-y: auto;                // 添加滚动支持
-  
-  /* 响应式优化 */
-  @media (max-width: 1600px) {
-    padding: 6px;
-    gap: 6px;
+  flex: 1;
+  min-width: 0;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 16px;
+  height: 100%;
+
+  &::-webkit-scrollbar {
+    width: 8px;
   }
-  
-  @media (max-width: 1200px) {
-    padding: 4px;
-    gap: 4px;
+
+  &::-webkit-scrollbar-track {
+    background: ${futuTheme.colors.backgroundSecondary};
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${futuTheme.colors.border};
+    border-radius: 4px;
+    
+    &:hover {
+      background: ${futuTheme.colors.borderSecondary};
+    }
   }
 `
 
-// 通用卡片组件
-export const Card = styled.div<{ padding?: string; margin?: string; border?: boolean }>`
-  background-color: ${futuTheme.colors.cardBackground};
-  border: 1px solid ${({ border = true }) => border ? futuTheme.colors.border : 'transparent'};
+export const Card = styled.div`
+  background: ${futuTheme.colors.cardBackground};
+  border: 1px solid ${futuTheme.colors.border};
   border-radius: ${futuTheme.layout.borderRadius};
-  padding: ${({ padding = futuTheme.layout.padding }) => padding};
-  margin: ${({ margin = '0' }) => margin};
-  box-shadow: ${futuTheme.shadows.small};
-  transition: box-shadow ${futuTheme.animation.duration} ${futuTheme.animation.easing};
-
-  &:hover {
-    box-shadow: ${futuTheme.shadows.medium};
-  }
+  overflow: hidden;
 `
 
 // 通用按钮组件

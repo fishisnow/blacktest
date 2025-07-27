@@ -4,7 +4,7 @@
 """
 from typing import List, Dict, Any, Union
 
-from src.constants import TRADING_DAYS_PER_YEAR, PROFIT_THRESHOLD, LOSS_THRESHOLD
+from backend.src.constants import TRADING_DAYS_PER_YEAR, PROFIT_THRESHOLD, LOSS_THRESHOLD
 
 
 class StatisticsCalculator:
@@ -73,6 +73,11 @@ class StatisticsCalculator:
         win_count = 0
         loss_count = 0
         
+        # 用于计算回撤
+        max_capital = initial_capital
+        current_drawdown = 0
+        max_drawdown = 0
+        
         for result in daily_results:
             # 统一获取net_pnl，处理对象和字典两种格式
             if isinstance(result, dict):
@@ -87,6 +92,18 @@ class StatisticsCalculator:
             
             # 累积总盈亏
             cumulative_pnl += net_pnl
+            
+            # 计算当前资金
+            current_capital = initial_capital + cumulative_pnl
+            
+            # 更新最大资金
+            if current_capital > max_capital:
+                max_capital = current_capital
+                current_drawdown = 0
+            else:
+                # 计算当前回撤
+                current_drawdown = (max_capital - current_capital) / max_capital * 100
+                max_drawdown = max(max_drawdown, current_drawdown)
             
             # 统计盈亏天数（设置阈值避免浮点数精度问题）
             if net_pnl > PROFIT_THRESHOLD:  # 盈利阈值
@@ -108,7 +125,9 @@ class StatisticsCalculator:
                 'net_pnl': net_pnl,
                 'total_pnl': cumulative_pnl,
                 'return_ratio': return_ratio,
-                'win_loss_ratio': win_loss_ratio
+                'win_loss_ratio': win_loss_ratio,
+                'drawdown': current_drawdown,
+                'max_drawdown': max_drawdown
             })
         
         return processed_results

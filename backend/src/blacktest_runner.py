@@ -7,11 +7,11 @@ from datetime import datetime
 from vnpy.trader.object import Interval
 from vnpy_ctastrategy.backtesting import BacktestingEngine
 
-from src.conf.backtest_config import BacktestConfig
-from src.storage.data_loader import DataLoader
-from src.storage.db_utils import get_db_manager, init_database
-from src.result_analyzer import ResultAnalyzer
-from src.constants import INITIAL_CAPITAL
+from backend.src.conf.backtest_config import BacktestConfig
+from backend.src.storage.data_loader import DataLoader
+from backend.src.storage.db_utils import get_db_manager, init_database
+from backend.src.result_analyzer import ResultAnalyzer
+from backend.src.constants import INITIAL_CAPITAL
 
 
 class BacktestRunner:

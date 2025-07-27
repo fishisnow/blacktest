@@ -8,12 +8,37 @@ import { MetricsPanel } from './components/Panels/MetricsPanel'
 import { TradeTable } from './components/Tables/TradeTable'
 import { HistoryPage } from './pages/HistoryPage'
 import { BacktestService } from './services/BacktestService'
+import styled from 'styled-components'
+import { futuTheme } from './styles/theme'
 import { 
   BacktestParams, 
   BacktestResults, 
   StockSymbol,
   BacktestStatus 
 } from './types/trading'
+
+// 添加Tab切换按钮样式
+const TabContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+`
+
+const TabButton = styled.button<{ active?: boolean }>`
+  padding: 8px 16px;
+  background: ${({ active }) => active ? futuTheme.colors.futuBlue : futuTheme.colors.backgroundTertiary};
+  border: 1px solid ${({ active }) => active ? futuTheme.colors.futuBlue : futuTheme.colors.border};
+  border-radius: 6px;
+  color: ${({ active }) => active ? futuTheme.colors.textPrimary : futuTheme.colors.textSecondary};
+  font-size: ${futuTheme.typography.fontSize.sm};
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: ${({ active }) => active ? futuTheme.colors.futuBlue : futuTheme.colors.backgroundSecondary};
+    border-color: ${futuTheme.colors.futuBlue};
+  }
+`
 
 const App: React.FC = () => {
   // 应用状态管理
@@ -23,7 +48,7 @@ const App: React.FC = () => {
   const getDefaultDates = () => {
     const end = new Date()
     const start = new Date()
-    start.setFullYear(end.getFullYear() - 1) // 默认1年
+    start.setFullYear(end.getFullYear() - 3) // 默认1年
     
     return {
       start: start.toISOString().split('T')[0],
@@ -52,6 +77,9 @@ const App: React.FC = () => {
   const [backtestStatus, setBacktestStatus] = useState<BacktestStatus>('idle')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 添加tab状态
+  const [activeTab, setActiveTab] = useState<'analysis' | 'trades'>('analysis')
 
   // 回测服务实例
   const backtestService = useMemo(() => new BacktestService(), [])
@@ -182,17 +210,37 @@ const App: React.FC = () => {
 
                 {/* 右侧主要内容区 */}
                 <ContentArea>
-                  {/* 图表区域 */}
-                  <ChartArea 
-                    selectedSymbol={selectedSymbol}
-                    backtestParams={backtestParams}
-                    backtestResults={backtestResults}
-                    loading={loading}
-                    error={error}
-                  />
-
-                  {/* 底部区域：指标和交易明细 */}
+                  {/* Tab切换按钮 */}
                   {backtestResults && (
+                    <TabContainer>
+                      <TabButton 
+                        active={activeTab === 'analysis'} 
+                        onClick={() => setActiveTab('analysis')}
+                      >
+                        📈 策略分析
+                      </TabButton>
+                      <TabButton 
+                        active={activeTab === 'trades'} 
+                        onClick={() => setActiveTab('trades')}
+                      >
+                        📊 交易记录
+                      </TabButton>
+                    </TabContainer>
+                  )}
+
+                  {/* 图表区域 */}
+                  {activeTab === 'analysis' && (
+                    <ChartArea 
+                      selectedSymbol={selectedSymbol}
+                      backtestParams={backtestParams}
+                      backtestResults={backtestResults}
+                      loading={loading}
+                      error={error}
+                    />
+                  )}
+
+                  {/* 交易记录区域 */}
+                  {activeTab === 'trades' && backtestResults && (
                     <>
                       {/* 回测指标 */}
                       <MetricsPanel 

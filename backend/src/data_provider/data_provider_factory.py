@@ -3,10 +3,10 @@
 统一管理和创建不同的数据提供器实例
 """
 from typing import Optional, Dict, List
-from src.data_provider.base_data_provider import BaseDataProvider
-from src.data_provider.tushare_data_provider import TushareDataProvider
-from src.data_provider.futu_data_provider import FutuDataProvider
-from src.conf.config import DataSource, config_manager
+from backend.src.data_provider.base_data_provider import BaseDataProvider
+from backend.src.data_provider.tushare_data_provider import TushareDataProvider
+from backend.src.data_provider.futu_data_provider import FutuDataProvider
+from backend.src.conf.config import DataSource, config_manager
 
 
 class DataProviderFactory:

@@ -9,9 +9,9 @@ import pandas as pd
 import tushare as ts
 from vnpy.trader.object import BarData, Interval
 
-from src.data_provider.base_data_provider import BaseDataProvider
-from src.conf.config import DataSource
-from src.symbol.symbols import get_symbols_by_market, get_symbol_info
+from backend.src.data_provider.base_data_provider import BaseDataProvider
+from backend.src.conf.config import DataSource
+from backend.src.symbol.symbols import get_symbols_by_market, get_symbol_info
 
 
 class TushareDataProvider(BaseDataProvider):

@@ -11,8 +11,8 @@ import os
 
 import pandas as pd
 
-from src.constants import INITIAL_CAPITAL
-from src.utils.statistics_calculator import StatisticsCalculator
+from backend.src.constants import INITIAL_CAPITAL
+from backend.src.utils.statistics_calculator import StatisticsCalculator
 
 
 class BacktestResultsDB:

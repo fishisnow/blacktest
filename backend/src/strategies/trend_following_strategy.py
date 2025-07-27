@@ -1,6 +1,6 @@
 """
 趋势跟踪策略
-基于移动平均线交叉和ATR止损的趋势跟踪策略
+基于移动平均线交叉和ATR止损的趋势跟踪策略（仅做多）
 """
 from typing import Any
 
@@ -18,11 +18,11 @@ from vnpy_ctastrategy import (
     ArrayManager,
 )
 
-from src.blacktest_runner import INITIAL_CAPITAL
+from backend.src.blacktest_runner import INITIAL_CAPITAL
 
 
 class TrendFollowingStrategy(CtaTemplate):
-    """趋势跟踪策略"""
+    """趋势跟踪策略（仅做多）"""
 
     author = "vnpy回测系统"
 
@@ -43,16 +43,14 @@ class TrendFollowingStrategy(CtaTemplate):
 
     # 信号标记
     long_entry = False
-    short_entry = False
     long_stop = 0.0
-    short_stop = 0.0
 
     # 盈亏跟踪
     entry_price = 0.0
     total_pnl = 0.0
     position_pnl = 0.0
 
-    # 策略参数和变量列表， 父类会自动读取这些参数和变量
+    # 策略参数和变量列表
     parameters = [
         "fast_ma_length",
         "slow_ma_length",
@@ -69,9 +67,7 @@ class TrendFollowingStrategy(CtaTemplate):
         "slow_ma1",
         "atr_value",
         "long_entry",
-        "short_entry",
         "long_stop",
-        "short_stop",
         "entry_price",
         "total_pnl",
         "position_pnl"
@@ -93,7 +89,6 @@ class TrendFollowingStrategy(CtaTemplate):
             return self.fixed_size
 
         # 对于分仓模式，使用初始资金作为基准计算
-        # 这样可以确保不同仓位模式之间的比较公平性
         base_capital = INITIAL_CAPITAL
 
         if self.position_mode == "1/4仓":
@@ -106,8 +101,7 @@ class TrendFollowingStrategy(CtaTemplate):
             # 默认返回固定手数
             return self.fixed_size
 
-        # 计算对应的交易手数
-        # 假设每手100股（这是A股的标准交易单位）
+        # 计算对应的交易手数（A股每手100股）
         size = int(position_value / (bar.close_price * 100))
         return max(1, size)  # 至少1手
 
@@ -151,28 +145,25 @@ class TrendFollowingStrategy(CtaTemplate):
         self.atr_value = atr_array[-1]
 
         # 计算持仓盈亏
-        if self.pos != 0 and self.entry_price > 0:
-            if self.pos > 0:  # 多头
-                self.position_pnl = (bar.close_price - self.entry_price) * self.pos
-            else:  # 空头
-                self.position_pnl = (self.entry_price - bar.close_price) * abs(self.pos)
+        if self.pos > 0 and self.entry_price > 0:
+            self.position_pnl = (bar.close_price - self.entry_price) * self.pos
         else:
             self.position_pnl = 0.0
 
-        # 判断交叉信号
+        # 判断金叉信号（做多信号）
         golden_cross = self.fast_ma0 > self.slow_ma0 and self.fast_ma1 <= self.slow_ma1
+        # 判断死叉信号（平多信号）
         death_cross = self.fast_ma0 < self.slow_ma0 and self.fast_ma1 >= self.slow_ma1
 
         # 计算止损价
         self.long_stop = bar.close_price - self.atr_value * self.atr_multiplier
-        self.short_stop = bar.close_price + self.atr_value * self.atr_multiplier
 
         # 计算交易手数
         trade_size = self.calculate_position_size(bar)
 
         # 交易逻辑
         if self.pos == 0:
-            # 无持仓时的开仓逻辑
+            # 无持仓时，只在金叉时做多
             if golden_cross:
                 self.buy(bar.close_price + 5, trade_size)
                 self.long_entry = True
@@ -184,19 +175,8 @@ class TrendFollowingStrategy(CtaTemplate):
                     'size': trade_size
                 })
 
-            elif death_cross:
-                self.short(bar.close_price - 5, trade_size)
-                self.short_entry = True
-                self.trade_signals.append({
-                    'datetime': bar.datetime,
-                    'price': bar.close_price,
-                    'signal': 'SHORT',
-                    'type': f'死叉开空({self.position_mode})',
-                    'size': trade_size
-                })
-
         elif self.pos > 0:
-            # 多头持仓
+            # 持有多头仓位时，在死叉或触及止损时平仓
             if death_cross:
                 self.sell(bar.close_price - 5, abs(self.pos))
                 self.long_entry = False
@@ -218,29 +198,6 @@ class TrendFollowingStrategy(CtaTemplate):
                     'size': abs(self.pos)
                 })
 
-        elif self.pos < 0:
-            # 空头持仓
-            if golden_cross:
-                self.cover(bar.close_price + 5, abs(self.pos))
-                self.short_entry = False
-                self.trade_signals.append({
-                    'datetime': bar.datetime,
-                    'price': bar.close_price,
-                    'signal': 'COVER',
-                    'type': '金叉平空',
-                    'size': abs(self.pos)
-                })
-            elif bar.close_price >= self.short_stop:
-                self.cover(self.short_stop, abs(self.pos))
-                self.short_entry = False
-                self.trade_signals.append({
-                    'datetime': bar.datetime,
-                    'price': self.short_stop,
-                    'signal': 'COVER',
-                    'type': 'ATR止损',
-                    'size': abs(self.pos)
-                })
-
         # 更新UI
         self.put_event()
 
@@ -253,19 +210,15 @@ class TrendFollowingStrategy(CtaTemplate):
         # 更新入场价格
         if self.pos == 0:  # 新开仓
             self.entry_price = trade.price
-        elif (self.pos > 0 and trade.direction == Direction.SHORT) or \
-                (self.pos < 0 and trade.direction == Direction.LONG):
-            # 平仓，计算盈亏
+        elif self.pos > 0 and trade.direction == Direction.SHORT:
+            # 平多仓，计算盈亏
             if self.entry_price > 0:
-                if self.pos > 0:  # 平多
-                    realized_pnl = (trade.price - self.entry_price) * trade.volume
-                else:  # 平空
-                    realized_pnl = (self.entry_price - trade.price) * trade.volume
+                realized_pnl = (trade.price - self.entry_price) * trade.volume
                 self.total_pnl += realized_pnl
                 print(f"交易完成 - 价格: {trade.price:.2f}, 盈亏: {realized_pnl:.2f}, 累计盈亏: {self.total_pnl:.2f}")
 
             # 如果完全平仓，重置入场价格
-            if abs(self.pos) == trade.volume:
+            if self.pos == trade.volume:
                 self.entry_price = 0.0
 
         self.put_event()

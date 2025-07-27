@@ -283,6 +283,60 @@ const ParameterSummary = styled.div`
   }
 `
 
+// 市场和类型筛选容器
+const FilterContainer = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+`
+
+// 分类标签
+const CategoryLabel = styled.div`
+  font-size: ${futuTheme.typography.fontSize.xs};
+  color: ${futuTheme.colors.textTertiary};
+  padding: 4px 8px;
+  background: ${futuTheme.colors.backgroundTertiary};
+  border-radius: 4px;
+  margin-bottom: 4px;
+`
+
+// 分类股票列表
+const CategoryStockList = styled.div`
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid ${futuTheme.colors.border};
+  border-radius: ${futuTheme.layout.borderRadius};
+  background: ${futuTheme.colors.backgroundTertiary};
+  margin-top: 8px;
+`
+
+// 多级下拉框样式
+const StyledSelect = styled(Select)`
+  .optgroup {
+    font-weight: ${futuTheme.typography.fontWeight.medium};
+    color: ${futuTheme.colors.textSecondary};
+    background: ${futuTheme.colors.backgroundSecondary};
+  }
+
+  option {
+    padding: 8px 12px;
+    
+    &[data-type="stock"] {
+      color: ${futuTheme.colors.textPrimary};
+    }
+    
+    &[data-type="index"] {
+      color: ${futuTheme.colors.futuBlue};
+    }
+  }
+`
+
+// 搜索输入框容器
+const SearchContainer = styled.div`
+  margin-top: 12px;
+`
+
 // 组件属性接口
 interface ParameterPanelProps {
   stockList: StockSymbol[]
@@ -305,22 +359,77 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({
   onRunBacktest,
   onClearResults
 }) => {
-  const [stockSearchTerm, setStockSearchTerm] = useState('')
-  const [showStockList, setShowStockList] = useState(false)
-  const [filteredStocks, setFilteredStocks] = useState<StockSymbol[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // 按市场和类型对股票进行分组
+  const groupedStocks = React.useMemo(() => {
+    const groups = {
+      CN: {
+        stocks: [] as StockSymbol[],
+        indices: [] as StockSymbol[]
+      },
+      HK: {
+        stocks: [] as StockSymbol[],
+        indices: [] as StockSymbol[]
+      },
+      US: {
+        stocks: [] as StockSymbol[],
+        indices: [] as StockSymbol[]
+      }
+    }
+
+    stockList.forEach(stock => {
+      if (groups[stock.market]) {
+        if (stock.type === 'index') {
+          groups[stock.market].indices.push(stock)
+        } else {
+          groups[stock.market].stocks.push(stock)
+        }
+      }
+    })
+
+    return groups
+  }, [stockList])
+
+  // 处理股票选择
+  const handleStockSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = event.target.value
+    const stock = stockList.find(s => s.code === selectedValue)
+    if (stock) {
+      onSymbolChange(stock)
+    }
+  }
 
   // 过滤股票列表
-  useEffect(() => {
-    if (stockSearchTerm) {
-      const filtered = stockList.filter(stock => 
-        stock.code.toLowerCase().includes(stockSearchTerm.toLowerCase()) ||
-        stock.name.toLowerCase().includes(stockSearchTerm.toLowerCase())
-      )
-      setFilteredStocks(filtered)
-    } else {
-      setFilteredStocks(stockList.slice(0, 20)) // 默认显示前20个
+  const getFilteredOptions = () => {
+    const searchLower = searchTerm.toLowerCase()
+    const markets = {
+      CN: 'A股市场',
+      HK: '港股市场',
+      US: '美股市场'
     }
-  }, [stockSearchTerm, stockList])
+
+    return Object.entries(groupedStocks).map(([market, { stocks, indices }]) => {
+      const filteredStocks = stocks.filter(
+        stock => !searchTerm || 
+        stock.code.toLowerCase().includes(searchLower) || 
+        stock.name.toLowerCase().includes(searchLower)
+      )
+
+      const filteredIndices = indices.filter(
+        index => !searchTerm || 
+        index.code.toLowerCase().includes(searchLower) || 
+        index.name.toLowerCase().includes(searchLower)
+      )
+
+      return {
+        market,
+        marketName: markets[market as keyof typeof markets],
+        stocks: filteredStocks,
+        indices: filteredIndices
+      }
+    }).filter(group => group.stocks.length > 0 || group.indices.length > 0)
+  }
 
   // 确保日期参数不为空
   useEffect(() => {
@@ -357,13 +466,6 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({
     })
   }
 
-  // 股票选择处理
-  const handleStockSelect = (stock: StockSymbol) => {
-    onSymbolChange(stock)
-    setStockSearchTerm(stock.code)
-    setShowStockList(false)
-  }
-
   return (
     <PanelContainer>
       <PanelContent>
@@ -375,37 +477,60 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({
           </SectionTitle>
           
           <FormGroup>
-            <Label>股票代码</Label>
-            <StockSearchContainer>
-              <StockSearchInput
-                placeholder="搜索股票代码或名称..."
-                value={stockSearchTerm}
-                onChange={(e) => {
-                  setStockSearchTerm(e.target.value)
-                  setShowStockList(true)
-                }}
-                onFocus={() => setShowStockList(true)}
-                onBlur={() => setTimeout(() => setShowStockList(false), 200)}
+            <StyledSelect
+              value={selectedSymbol?.code || ''}
+              onChange={handleStockSelect}
+              style={{ width: '100%' }}
+            >
+              <option value="">请选择股票</option>
+              {getFilteredOptions().map(group => (
+                <React.Fragment key={group.market}>
+                  {/* 股票分组 */}
+                  {group.stocks.length > 0 && (
+                    <>
+                      <optgroup label={`${group.marketName} - 股票`} className="optgroup">
+                        {group.stocks.map(stock => (
+                          <option 
+                            key={stock.code} 
+                            value={stock.code}
+                            data-type="stock"
+                          >
+                            {stock.code} - {stock.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  )}
+                  
+                  {/* 指数分组 */}
+                  {group.indices.length > 0 && (
+                    <>
+                      <optgroup label={`${group.marketName} - 指数`} className="optgroup">
+                        {group.indices.map(index => (
+                          <option 
+                            key={index.code} 
+                            value={index.code}
+                            data-type="index"
+                          >
+                            {index.code} - {index.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  )}
+                </React.Fragment>
+              ))}
+            </StyledSelect>
+
+            <SearchContainer>
+              <Label>快速搜索</Label>
+              <Input
+                type="text"
+                placeholder="输入代码或名称进行搜索..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
-              <StockSearchIcon>🔍</StockSearchIcon>
-              
-              {showStockList && filteredStocks.length > 0 && (
-                <StockList>
-                  {filteredStocks.map((stock) => (
-                    <StockItem 
-                      key={stock.code}
-                      onClick={() => handleStockSelect(stock)}
-                    >
-                      <div className="code">
-                        {stock.code}
-                        <span className="market">{stock.market}</span>
-                      </div>
-                      <div className="name">{stock.name}</div>
-                    </StockItem>
-                  ))}
-                </StockList>
-              )}
-            </StockSearchContainer>
+            </SearchContainer>
           </FormGroup>
         </Card>
 

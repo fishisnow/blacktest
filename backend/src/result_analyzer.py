@@ -16,8 +16,8 @@ import matplotlib.dates as mdates
 from matplotlib.font_manager import FontProperties, findfont
 import os
 import platform
-from src.conf.backtest_config import BacktestConfig
-from src.storage.database_manager import BacktestResultsDB
+from backend.src.conf.backtest_config import BacktestConfig
+from backend.src.storage.database_manager import BacktestResultsDB
 
 
 # 配置中文字体

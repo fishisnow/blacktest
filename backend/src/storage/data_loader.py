@@ -12,10 +12,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from vnpy.trader.object import BarData, Interval, Exchange
 
-from src.data_provider.base_data_provider import BaseDataProvider
-from src.conf.config import config_manager
-from src.data_provider.data_provider_factory import data_provider_factory
-from src.utils.date_utils import trading_date_utils
+from backend.src.data_provider.base_data_provider import BaseDataProvider
+from backend.src.conf.config import config_manager
+from backend.src.data_provider.data_provider_factory import data_provider_factory
+from backend.src.utils.date_utils import trading_date_utils
 
 load_dotenv()
 
@@ -118,7 +118,7 @@ class DataLoader:
                 data = provider.get_historical_data(symbol, start_date, end_date)
                 if data:
                     # 保存到缓存
-                    self._save_to_cache(data, self._get_data_type(symbol, provider), provider.get_data_source_name())
+                    self._save_to_cache(symbol, data, self._get_data_type(symbol, provider), provider.get_data_source_name())
                     print(f"从 {provider.get_data_source_name()} 获取到 {len(data)} 条数据")
                     return data
                 else:
@@ -249,7 +249,7 @@ class DataLoader:
         ranges.append((range_start, range_end))
         return ranges
 
-    def _save_to_cache(self, bars: List[BarData], data_type: str, data_source: str):
+    def _save_to_cache(self, symbol, bars: List[BarData], data_type: str, data_source: str):
         """保存数据到缓存"""
         if not bars:
             return
@@ -265,7 +265,7 @@ class DataLoader:
                      close_price, volume, turnover)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    bar.symbol,
+                    symbol,
                     data_type,
                     data_source,
                     bar.datetime.strftime('%Y%m%d'),
