@@ -95,15 +95,10 @@ class SymbolManager:
         """检查是否支持指定的股票代码"""
         return symbol in self.symbols
 
-    def get_symbols_by_market(self, market: str) -> Dict[str, dict]:
+    def get_symbols_by_market(self, market: str, symbol_type: str = None) -> Dict[str, dict]:
         """获取指定市场的所有股票代码"""
         return {symbol: info for symbol, info in self.symbols.items()
-                if info['market'] == market}
-
-    def get_symbols_by_type(self, symbol_type: str) -> Dict[str, dict]:
-        """获取指定类型的所有股票代码"""
-        return {symbol: info for symbol, info in self.symbols.items()
-                if info['type'] == symbol_type}
+                if info['market'] == market and info['type'] == symbol_type}
 
     def get_all_symbols(self) -> Dict[str, dict]:
         """获取所有支持的股票代码"""
@@ -124,14 +119,9 @@ def get_symbol_info(symbol: str) -> dict:
     return _symbol_manager.get_symbol_info(symbol)
 
 
-def get_symbols_by_market(market: str) -> Dict[str, dict]:
+def get_symbols_by_market(market: str, symbol_type: str) -> Dict[str, dict]:
     """获取指定市场的所有股票代码"""
-    return _symbol_manager.get_symbols_by_market(market)
-
-
-def get_symbols_by_type(symbol_type: str) -> Dict[str, dict]:
-    """获取指定类型的所有股票代码"""
-    return _symbol_manager.get_symbols_by_type(symbol_type)
+    return _symbol_manager.get_symbols_by_market(market, symbol_type)
 
 
 def get_all_symbols() -> Dict[str, dict]:

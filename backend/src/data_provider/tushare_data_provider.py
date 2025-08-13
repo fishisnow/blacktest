@@ -117,7 +117,7 @@ class TushareDataProvider(BaseDataProvider):
     def get_supported_symbols(self) -> Dict[str, Dict[str, Any]]:
         """获取支持的股票代码列表（仅返回 A股 相关的）"""
         # 返回 A股 市场的股票代码
-        cn_symbols = get_symbols_by_market("CN")
+        cn_symbols = get_symbols_by_market("CN", "stock")
         return cn_symbols
 
     def test_connection(self) -> bool:

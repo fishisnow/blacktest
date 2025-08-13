@@ -40,24 +40,28 @@ class BacktestRunner:
         """
         # 如果已经包含交易所后缀
         if '.' in symbol:
-            code, exchange_suffix = symbol.split('.')
-            exchange_upper = exchange_suffix.upper()
+            part1, part2 = symbol.split('.')
+            part1_lowercase = part1.upper()
+            part2_lowercase = part2.upper()
 
             # A股 - 上海证券交易所
-            if exchange_upper == 'SH':
-                return f"{code}.SSE"
+            if part2_lowercase == 'SH':
+                return f"{part1}.SSE"
+            elif part1_lowercase == 'SH':
+                return f"{part2_lowercase}.SSE"
             # A股 - 深圳证券交易所
-            elif exchange_upper == 'SZ':
-                return f"{code}.SZSE"
+            elif part2_lowercase == 'SZ':
+                return f"{part1}.SZSE"
+            elif part1_lowercase == 'SZ':
+                return  f"{part2_lowercase}.SZSE"
             # 港股 - 香港交易所 港股代码格式相反
-            elif code == 'HK':
-                code = exchange_upper
-                return f"{code}.SEHK"
+            elif part1_lowercase == 'HK':
+                return f"{part2_lowercase}.SEHK"
             # 美股 - 纳斯达克（vnpy中美股通常用NASDAQ）
-            elif exchange_upper in 'US':
-                return f"{code}.NASDAQ"
+            elif part2_lowercase == 'US':
+                return f"{part1_lowercase}.NASDAQ"
             else:
-                raise ValueError(f"不支持的交易所后缀: {exchange_suffix}")
+                raise ValueError(f"不支持的交易所格式： {symbol}")
 
         raise ValueError(f"无法识别的股票代码格式: {symbol}")
 

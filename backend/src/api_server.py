@@ -2,28 +2,25 @@
 回测系统 FastAPI 服务器
 将 streamlit_app.py 的功能转换为 REST API 接口
 """
+import logging
 import time
 import traceback
-from datetime import datetime, date
+from datetime import datetime
 from typing import List, Dict, Any, Optional
-import asyncio
-import logging
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-import pandas as pd
 
+from backend.src.blacktest_runner import BacktestRunner
 # 导入业务逻辑模块
 from backend.src.conf.backtest_config import BacktestConfig
-from backend.src.blacktest_runner import BacktestRunner
+from backend.src.constants import INITIAL_CAPITAL
+from backend.src.storage.data_loader import DataLoader
 from backend.src.storage.db_utils import get_db_manager
 from backend.src.strategies.trend_following_strategy import TrendFollowingStrategy
-from backend.src.symbol.symbols import get_all_symbols, get_symbols_by_market
-from backend.src.storage.data_loader import DataLoader
+from backend.src.symbol.symbols import get_all_symbols
 from backend.src.utils.statistics_calculator import StatisticsCalculator
-from backend.src.constants import INITIAL_CAPITAL
 
 # 配置日志 (通过 uvicorn 的 log_config 统一管理)
 logger = logging.getLogger(__name__)

@@ -131,12 +131,14 @@ class DataLoader:
 
     def _determine_market(self, symbol: str) -> str:
         # 根据代码格式判断
-        if symbol.endswith('.SH') or symbol.endswith('.SZ'):
+        if symbol.endswith('.SH') or symbol.endswith('.SZ') or symbol.startswith('SH.') or symbol.startswith('SZ.'):
             return "CN"
         elif symbol.startswith('HK.'):
             return "HK"
+        elif symbol.startswith('US.'):
+            return "US"
         else:
-            return "US"  # 默认
+            raise Exception("unkonwn market symbol")
 
     def _get_data_type(self, symbol: str, provider: BaseDataProvider) -> str:
         """获取数据类型（股票或指数）"""

@@ -134,11 +134,12 @@ class FutuDataProvider(BaseDataProvider):
     def get_supported_symbols(self) -> Dict[str, Dict[str, Any]]:
         """获取支持的股票代码列表（返回美股和港股）"""
         # 返回美股和港股市场的股票代码
-        us_symbols = get_symbols_by_market("US")
-        hk_symbols = get_symbols_by_market("HK")
-        
+        us_symbols = get_symbols_by_market("US", "stock")
+        hk_symbols = get_symbols_by_market("HK", "stock")
+        cn_index_symbols = get_symbols_by_market("CN", "index")
+
         # 合并两个市场的股票代码
-        supported_symbols = {**us_symbols, **hk_symbols}
+        supported_symbols = {**us_symbols, **hk_symbols, **cn_index_symbols}
         return supported_symbols
 
     def test_connection(self) -> bool:
